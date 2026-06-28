@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Планировщик</title>
+  <style>
+    :root {
+      --bg: #f4f2ee;
+      --surface: #fff;
+      --border: #e5e1d8;
+      --text: #1a1a1a;
+      --muted: #888880;
+      --q-a: #c0392b;
+      --q-b: #d4891a;
+      --q-c: #1e8449;
+      --q-d: #7f8c8d;
+      --q-v: #7d3c98;
+      --accent: #2471a3;
+      --danger: #c0392b;
+      --r: 10px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .app {
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 14px 14px 48px;
+    }
+
+    /* ── Today block ─────────────────────────────── */
+    .today-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+
+    .today-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .today-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .traffic-light {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .tl-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 9px;
+      border-radius: 20px;
+      background: #eee;
+      color: var(--muted);
+    }
+
+    .tl-pill.ok  { background: #e8f5ed; color: var(--q-c); }
+    .tl-pill.over { background: #fde8e6; color: var(--danger); }
+
+    .tl-hours { font-size: 12px; color: var(--muted); }
+    .tl-hours.over { color: var(--danger); font-weight: 600; }
+
+    .warn-banner {
+      font-size: 12px;
+      color: var(--danger);
+      padding: 4px 0 0;
+    }
+
+    #today-tasks {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .today-empty {
+      font-size: 13px;
+      color: var(--muted);
+      padding: 6px 0;
+    }
+
+    /* ── Today card ──────────────────────────────── */
+    .today-card {
+      background: #f9f8f5;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .today-card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .today-card-info { flex: 1; min-width: 0; }
+
+    .today-card-name {
+      font-size: 14px;
+      word-break: break-word;
+    }
+
+    .today-card-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    .btn-done {
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      color: var(--muted);
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .btn-done:hover { background: #f0f0f0; }
+
+    .btn-done.pulse {
+      background: #e8f7ee;
+      border-color: var(--q-c);
+      color: var(--q-c);
+      font-weight: 600;
+      animation: pulse-green 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-green {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(30,132,73,0.3); }
+      50%       { box-shadow: 0 0 0 4px rgba(30,132,73,0.1); }
+    }
+
+    .subtask-list {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .subtask-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 0;
+      font-size: 13px;
+    }
+
+    .subtask-row input[type=checkbox] {
+      cursor: pointer;
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      accent-color: var(--q-c);
+    }
+
+    .subtask-row.st-done label {
+      text-decoration: line-through;
+      color: var(--muted);
+    }
+
+    /* ── Main grid ───────────────────────────────── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 285px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    @media (max-width: 660px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Panel ───────────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+    }
+
+    /* ── Calendar ────────────────────────────────── */
+    .cal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .cal-title { font-size: 14px; font-weight: 600; }
+
+    .cal-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 20px;
+      color: var(--muted);
+      padding: 2px 6px;
+      border-radius: 5px;
+      line-height: 1;
+    }
+
+    .cal-btn:hover { background: var(--bg); color: var(--text); }
+
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+    }
+
+    .cal-dow {
+      text-align: center;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      padding: 3px 0 5px;
+    }
+
+    .cal-cell {
+      position: relative;
+      text-align: center;
+      padding: 5px 2px 9px;
+      font-size: 13px;
+      border-radius: 5px;
+      cursor: pointer;
+      min-height: 32px;
+      user-select: none;
+    }
+
+    .cal-cell:hover             { background: var(--bg); }
+    .cal-cell.empty             { cursor: default; }
+    .cal-cell.empty:hover       { background: none; }
+    .cal-cell.other-month       { opacity: 0.3; cursor: default; }
+    .cal-cell.other-month:hover { background: none; }
+    .cal-cell.is-today          { font-weight: 700; color: var(--accent); }
+    .cal-cell.is-selected       { background: #eef4fb; }
+
+    .cal-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      line-height: 1;
+    }
+
+    .cal-ring-task    { border: 2px solid var(--accent); }
+    .cal-ring-meeting { border: 2px solid var(--q-v); }
+    .cal-ring-both    { border: 2px solid var(--accent); outline: 2px solid var(--q-v); outline-offset: 2px; }
+
+    .day-panel {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .day-panel-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .day-task-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 3px 0;
+      font-size: 13px;
+    }
+
+    /* ── Backlog ─────────────────────────────────── */
+    .backlog-group { margin-bottom: 18px; }
+    .backlog-group:last-child { margin-bottom: 0; }
+
+    .group-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .task-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 0;
+      border-bottom: 1px solid #f0ede8;
+    }
+
+    .task-row:last-of-type { border-bottom: none; }
+
+    .task-row-body { flex: 1; min-width: 0; }
+
+    .task-name {
+      font-size: 14px;
+      word-break: break-word;
+      line-height: 1.4;
+    }
+
+    .task-row-meta {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .btn-add {
+      flex-shrink: 0;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .btn-add:hover { background: var(--bg); color: var(--text); border-color: #aaa; }
+
+    /* ── Q dot ───────────────────────────────────── */
+    .q-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 5px;
+    }
+
+    .q-dot.A { background: var(--q-a); }
+    .q-dot.B { background: var(--q-b); }
+    .q-dot.C { background: var(--q-c); }
+    .q-dot.D { background: var(--q-d); }
+    .q-dot.V { background: var(--q-v); }
+
+    /* ── Nasty tag ───────────────────────────────── */
+    .nasty {
+      display: inline-block;
+      font-size: 10px;
+      background: #fde8e6;
+      color: var(--danger);
+      border-radius: 3px;
+      padding: 0 4px;
+      margin-left: 4px;
+      vertical-align: middle;
+      font-style: normal;
+    }
+
+    /* ── Subtask form ────────────────────────────── */
+    .subtask-form {
+      margin-top: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 10px;
+    }
+
+    .subtask-form-label {
+      font-size: 12px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .subtask-form textarea {
+      width: 100%;
+      min-height: 72px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 6px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .subtask-form textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .btn-primary {
+      background: var(--text);
+      color: var(--surface);
+      border: none;
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover { background: #333; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--muted);
+    }
+
+    .btn-secondary:hover { background: var(--bg); }
+
+    /* ── Add form ────────────────────────────────── */
+    .add-wrap { margin-bottom: 12px; }
+
+    .btn-add-toggle {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text);
+      font-family: inherit;
+    }
+
+    .btn-add-toggle:hover { background: var(--bg); }
+
+    .add-form-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 12px 14px;
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .f-text {
+      flex: 1;
+      min-width: 180px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .f-text:focus { outline: none; border-color: var(--accent); }
+
+    .f-select {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .f-select:focus { outline: none; border-color: var(--accent); }
+
+    .f-date {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .f-date:focus { outline: none; border-color: var(--accent); }
+
+    /* ── Urgent ──────────────────────────────────── */
+    .task-row--urgent {
+      border-left: 3px solid var(--danger);
+      padding-left: 8px;
+      margin-left: -3px;
+    }
+
+    .tag-urgent {
+      display: inline-block;
+      font-size: 10px;
+      background: #fde8e6;
+      color: var(--danger);
+      border-radius: 3px;
+      padding: 0 5px;
+      margin-left: 5px;
+      vertical-align: middle;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    .task-row--urgent .btn-add {
+      border-color: var(--danger);
+      color: var(--danger);
+      font-weight: 600;
+    }
+
+    .task-row--urgent .btn-add:hover { background: #fde8e6; }
+
+    /* ── States ──────────────────────────────────── */
+    .empty-state {
+      font-size: 13px;
+      color: var(--muted);
+      padding: 16px 0;
+      text-align: center;
+    }
+
+    .loading-state {
+      text-align: center;
+      color: var(--muted);
+      padding: 40px;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Add form ──────────────────────────────── -->
+  <div class="add-wrap">
+    <div id="add-form" class="add-form-panel">
+      <input type="text" id="f-task" class="f-text" placeholder="＋ Новая задача…">
+      <select id="f-quadrant" class="f-select">
+        <option value="A">A · Сначала</option>
+        <option value="B">B · Потом</option>
+        <option value="C">C</option>
+        <option value="D">D</option>
+        <option value="Встреча">Встреча</option>
+      </select>
+      <select id="f-size" class="f-select">
+        <option value="S">S</option>
+        <option value="M" selected>M</option>
+        <option value="L">L</option>
+      </select>
+      <input type="date" id="f-when" class="f-date">
+      <button id="f-submit" class="btn-primary">Добавить</button>
+    </div>
+  </div>
+
+  <!-- ── Today ─────────────────────────────────── -->
+  <section class="today-block">
+    <div class="today-header">
+      <span class="today-title">Сегодня</span>
+      <div id="traffic-light" class="traffic-light"></div>
+      <span id="tl-hours" class="tl-hours"></span>
+    </div>
+    <div id="warn-text"></div>
+    <div id="today-tasks"></div>
+  </section>
+
+  <div class="main-grid">
+
+    <!-- ── Calendar ──────────────────────────────── -->
+    <section class="panel">
+      <div class="cal-header">
+        <button class="cal-btn" id="cal-prev">‹</button>
+        <span class="cal-title" id="cal-title"></span>
+        <button class="cal-btn" id="cal-next">›</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div id="day-panel"></div>
+    </section>
+
+    <!-- ── Backlog ────────────────────────────────── -->
+    <section class="panel">
+      <div id="backlog"><div class="loading-state">Загрузка…</div></div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const API_URL      = 'https://script.google.com/macros/s/AKfycbx6RqQPNzGxkdc3uSA41PGHlle2ZFO8xMLWKo3kcEc3uLUHrHweeBPresZL_tLE3iFgCA/exec';
+const SECRET_TOKEN = 'H4zNqR8uhlaNX4qYDtxeV3qCPhq9VOsjy85rB8G7agGCpdJma8raW5Vvh37aJSlt';
+
+// ── Constants ──────────────────────────────────────────────
+const SIZES      = { S: 0.5, M: 1.5, L: 3.5 };
+const LIMITS     = { A: 1, B: 2, C: 3 };
+const HOUR_LIMIT = 6;
+
+const Q_LABELS = {
+  A: 'A · Сначала',
+  B: 'B · Потом',
+  C: 'C',
+  D: 'D',
+  'Встреча': 'Встречи',
+};
+
+const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь',
+                'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const DOWS   = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+
+// ── State ──────────────────────────────────────────────────
+const state = {
+  tasks:      [],        // raw tasks from getBacklog
+  todayTasks: [],        // { task, subtasks:[{text,done}], earned }
+  year:       new Date().getFullYear(),
+  month:      new Date().getMonth(),   // 0-indexed
+  selectedDay: null,     // 'yyyy-MM-dd'
+  formTaskId: null,      // task.id with open inline subtask form
+};
+
+// ── API ────────────────────────────────────────────────────
+async function fetchBacklog() {
+  try {
+    const r    = await fetch(`${API_URL}?action=getBacklog&token=${SECRET_TOKEN}`);
+    const data = await r.json();
+    if (data.ok) {
+      state.tasks = data.tasks;
+      renderAll();
+    } else {
+      showError('Ошибка при загрузке бэклога');
+    }
+  } catch {
+    showError('Нет соединения с сервером');
+  }
+}
+
+async function apiPost(body) {
+  const fd = new FormData();
+  fd.append('token', SECRET_TOKEN);
+  for (const [k, v] of Object.entries(body)) fd.append(k, String(v));
+  const r = await fetch(API_URL, { method: 'POST', body: fd });
+  return r.json();
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function parseSubtasks(str) {
+  if (!str) return [];
+  return str.split('|').map(chunk => {
+    const sep = chunk.lastIndexOf(':');
+    return { text: chunk.slice(0, sep), done: chunk.slice(sep + 1) === '1' };
+  });
+}
+
+function taskDate(task) {
+  // returns 'yyyy-MM-dd' or null
+  return task.date ? task.date.slice(0, 10) : null;
+}
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function dotCls(quadrant) {
+  return quadrant === 'Встреча' ? 'V' : quadrant;
+}
+
+function checkLimits() {
+  const counts = { A: 0, B: 0, C: 0 };
+  let hours = 0;
+  for (const e of state.todayTasks) {
+    const q = e.task.quadrant;
+    if (counts[q] !== undefined) counts[q]++;
+    hours += SIZES[e.task.size] ?? 0;
+  }
+  const overA = counts.A > LIMITS.A;
+  const overB = counts.B > LIMITS.B;
+  const overC = counts.C > LIMITS.C;
+  const overH = hours > HOUR_LIMIT;
+  return { counts, hours, overA, overB, overC, overH,
+           exceeded: overA || overB || overC || overH };
+}
+
+// ── Render ─────────────────────────────────────────────────
+function renderAll() {
+  renderToday();
+  renderCalendar();
+  renderBacklog();
+}
+
+// ── Today ──────────────────────────────────────────────────
+function renderToday() {
+  const lim = checkLimits();
+
+  // Traffic light
+  document.getElementById('traffic-light').innerHTML =
+    ['A','B','C'].map(k => {
+      const over  = lim[`over${k}`];
+      const cls   = over ? 'over' : (lim.counts[k] > 0 ? 'ok' : '');
+      return `<span class="tl-pill ${cls}">${k}: ${lim.counts[k]}/${LIMITS[k]}</span>`;
+    }).join('');
+
+  // Hours
+  const hlEl = document.getElementById('tl-hours');
+  hlEl.className = `tl-hours${lim.overH ? ' over' : ''}`;
+  hlEl.textContent = `⏱ ${lim.hours.toFixed(1)} / ${HOUR_LIMIT} ч`;
+
+  // Warning
+  const warnEl = document.getElementById('warn-text');
+  if (lim.exceeded) {
+    const msgs = [];
+    if (lim.overA || lim.overB || lim.overC) msgs.push('превышен лимит по типам задач');
+    if (lim.overH) msgs.push('превышен лимит по часам');
+    warnEl.innerHTML = `<div class="warn-banner">⚠ ${msgs.join(' · ')}</div>`;
+  } else {
+    warnEl.innerHTML = '';
+  }
+
+  // Task cards
+  const el = document.getElementById('today-tasks');
+  if (state.todayTasks.length === 0) {
+    el.innerHTML = '<div class="today-empty">Добавь задачи из списка справа →</div>';
+    return;
+  }
+
+  el.innerHTML = state.todayTasks.map((e, ti) => renderTodayCard(e, ti)).join('');
+
+  el.querySelectorAll('.subtask-cb').forEach(cb => {
+    cb.addEventListener('change', () => handleToggle(+cb.dataset.ti, +cb.dataset.si));
+  });
+  el.querySelectorAll('.btn-done').forEach(btn => {
+    btn.addEventListener('click', () => handleComplete(+btn.dataset.ti));
+  });
+}
+
+function renderTodayCard(entry, ti) {
+  const { task, subtasks, earned } = entry;
+  const allDone = subtasks.length > 0 && subtasks.every(s => s.done);
+
+  const meta = [task.size];
+  if (task.points && task.quadrant !== 'Встреча') {
+    meta.push(`${earned ?? 0} / ${task.points} pts`);
+  }
+  if (task.date) meta.push(task.date.slice(0, 10));
+
+  const stepsHtml = subtasks.length > 0
+    ? `<div class="subtask-list">${subtasks.map((s, si) => `
+        <div class="subtask-row${s.done ? ' st-done' : ''}">
+          <input type="checkbox" class="subtask-cb" id="cb-${ti}-${si}"
+            data-ti="${ti}" data-si="${si}"${s.done ? ' checked' : ''}>
+          <label for="cb-${ti}-${si}">${esc(s.text)}</label>
+        </div>`).join('')}</div>`
+    : '';
+
+  return `<div class="today-card">
+    <div class="today-card-header">
+      <span class="q-dot ${dotCls(task.quadrant)}"></span>
+      <div class="today-card-info">
+        <div class="today-card-name">${esc(task.task)}${task.nasty ? '<em class="nasty">!</em>' : ''}</div>
+        <div class="today-card-meta">${meta.join(' · ')}</div>
+      </div>
+      <button class="btn-done${allDone ? ' pulse' : ''}" data-ti="${ti}">Готово ✓</button>
+    </div>
+    ${stepsHtml}
+  </div>`;
+}
+
+// ── Calendar ───────────────────────────────────────────────
+function renderCalendar() {
+  const { year: y, month: m } = state;
+  document.getElementById('cal-title').textContent = `${MONTHS[m]} ${y}`;
+
+  const today         = todayStr();
+  const deadlineDates = new Set();
+  const meetingDates  = new Set();
+  for (const t of state.tasks) {
+    const d = taskDate(t);
+    if (!d) continue;
+    if (t.quadrant === 'Встреча') meetingDates.add(d); else deadlineDates.add(d);
+  }
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const offset   = firstDow === 0 ? 6 : firstDow - 1;  // Monday-based
+  const lastDate = new Date(y, m + 1, 0).getDate();
+
+  let html = DOWS.map(d => `<div class="cal-dow">${d}</div>`).join('');
+  for (let i = 0; i < offset; i++) html += '<div class="cal-cell empty"></div>';
+
+  for (let d = 1; d <= lastDate; d++) {
+    const ds  = `${y}-${pad(m + 1)}-${pad(d)}`;
+    const cls = ['cal-cell',
+      ds === today            ? 'is-today'    : '',
+      ds === state.selectedDay ? 'is-selected' : '',
+    ].filter(Boolean).join(' ');
+    html += `<div class="${cls}" data-date="${ds}"><span class="${calNumClass(ds, deadlineDates, meetingDates)}">${d}</span></div>`;
+  }
+
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = html;
+
+  grid.querySelectorAll('.cal-cell[data-date]').forEach(cell => {
+    cell.addEventListener('click', () => {
+      state.selectedDay = cell.dataset.date;
+      renderCalendar();
+      renderDayPanel();
+    });
+  });
+}
+
+function renderDayPanel() {
+  const panel = document.getElementById('day-panel');
+  if (!state.selectedDay) { panel.innerHTML = ''; return; }
+
+  const ds    = state.selectedDay;
+  const items = state.tasks.filter(t => taskDate(t) === ds);
+
+  const body = items.length === 0
+    ? '<div class="today-empty" style="padding:6px 0">Нет задач</div>'
+    : items.map(t => `<div class="day-task-row">
+        <span class="q-dot ${dotCls(t.quadrant)}"></span>
+        <span>${esc(t.task)}</span>
+      </div>`).join('');
+
+  panel.innerHTML = `<div class="day-panel">
+    <div class="day-panel-title">${formatDate(ds)}</div>
+    ${body}
+  </div>`;
+}
+
+// ── Backlog ────────────────────────────────────────────────
+function renderBacklog() {
+  const order    = ['A','B','C','D','Встреча'];
+  const todayIds = new Set(state.todayTasks.map(e => e.task.id));
+
+  const groups = {};
+  for (const q of order) groups[q] = [];
+  for (const t of state.tasks) {
+    if (!todayIds.has(t.id) && groups[t.quadrant] !== undefined) {
+      groups[t.quadrant].push(t);
+    }
+  }
+
+  let html = '';
+  for (const q of order) {
+    if (!groups[q].length) continue;
+    html += `<div class="backlog-group">
+      <div class="group-title">${Q_LABELS[q]}</div>
+      ${groups[q].map(t => renderTaskRow(t, q)).join('')}
+    </div>`;
+  }
+
+  const el = document.getElementById('backlog');
+  el.innerHTML = html || '<div class="empty-state">Бэклог пуст</div>';
+
+  el.querySelectorAll('.btn-add').forEach(btn => {
+    btn.addEventListener('click', () => handleAddToToday(btn.dataset.id));
+  });
+
+  const sfSave   = document.getElementById('sf-save');
+  const sfCancel = document.getElementById('sf-cancel');
+  const sfTa     = document.getElementById('sf-textarea');
+
+  if (sfSave) {
+    sfSave.addEventListener('click', () => submitSubtaskForm(sfSave.dataset.id));
+  }
+  if (sfCancel) {
+    sfCancel.addEventListener('click', () => {
+      state.formTaskId = null;
+      renderBacklog();
+    });
+  }
+  if (sfTa) {
+    sfTa.focus();
+    sfTa.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function renderTaskRow(task, q) {
+  const stCount = task.subtasks ? parseSubtasks(task.subtasks).length : 0;
+  const urgent  = isUrgent(task);
+
+  const meta = [];
+  if (task.size)                      meta.push(task.size);
+  if (task.points && q !== 'Встреча') meta.push(`${task.points} pts`);
+  if (stCount > 0)                    meta.push(`${stCount} шагов`);
+  if (task.date)                      meta.push(task.date.slice(0, 10));
+
+  const addBtn = q !== 'D'
+    ? `<button class="btn-add" data-id="${task.id}">→ сегодня</button>`
+    : '';
+
+  const formHtml = state.formTaskId === task.id ? renderSubtaskForm(task) : '';
+
+  return `<div class="task-row${urgent ? ' task-row--urgent' : ''}">
+    <span class="q-dot ${dotCls(q)}"></span>
+    <div class="task-row-body">
+      <div class="task-name">${esc(task.task)}${task.nasty ? '<em class="nasty">!</em>' : ''}</div>
+      ${meta.length ? `<div class="task-row-meta">${meta.join(' · ')}</div>` : ''}
+      ${formHtml}
+    </div>
+    ${addBtn}
+  </div>`;
+}
+
+function renderSubtaskForm(task) {
+  const prefill = task.subtasks
+    ? parseSubtasks(task.subtasks).map(s => s.text).join('\n')
+    : '';
+  return `<div class="subtask-form">
+    <span class="subtask-form-label">Разбей на шаги (каждый шаг — новая строка):</span>
+    <textarea id="sf-textarea" placeholder="Шаг 1&#10;Шаг 2&#10;Шаг 3">${esc(prefill)}</textarea>
+    <div class="form-actions">
+      <button class="btn-primary" id="sf-save" data-id="${task.id}">Добавить в сегодня</button>
+      <button class="btn-secondary" id="sf-cancel">Отмена</button>
+    </div>
+  </div>`;
+}
+
+// ── Handlers ───────────────────────────────────────────────
+function handleAddToToday(taskId) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  // Close any other open form first
+  if (state.formTaskId && state.formTaskId !== taskId) {
+    state.formTaskId = null;
+  }
+
+  // Meetings always go straight in, regardless of size
+  if (task.quadrant === 'Встреча' || task.size === 'S') {
+    addToTodayDirect(task);
+    return;
+  }
+
+  // M or L: show subtask form inline
+  state.formTaskId = taskId;
+  renderBacklog();
+}
+
+async function submitSubtaskForm(taskId) {
+  const ta = document.getElementById('sf-textarea');
+  if (!ta) return;
+
+  const lines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    ta.style.borderColor = 'var(--danger)';
+    return;
+  }
+
+  const btn = document.getElementById('sf-save');
+  if (btn) btn.disabled = true;
+
+  try {
+    await apiPost({ action: 'setSubtasks', id: taskId, steps: lines.join('|') });
+    const task = state.tasks.find(t => t.id === taskId);
+    if (task) task.subtasks = lines.map(l => `${l}:0`).join('|');
+    state.formTaskId = null;
+    addToTodayDirect(state.tasks.find(t => t.id === taskId));
+  } catch {
+    if (btn) btn.disabled = false;
+    alert('Ошибка сохранения подзадач');
+  }
+}
+
+function addToTodayDirect(task) {
+  if (!task) return;
+  state.todayTasks.push({ task, subtasks: parseSubtasks(task.subtasks), earned: 0 });
+  state.formTaskId = null;
+  renderAll();
+}
+
+async function handleToggle(ti, si) {
+  const entry = state.todayTasks[ti];
+  if (!entry) return;
+
+  // Optimistic
+  entry.subtasks[si].done = !entry.subtasks[si].done;
+  renderToday();
+
+  try {
+    const data = await apiPost({ action: 'toggleSubtask', id: entry.task.id, index: si });
+    if (data.ok !== false) {
+      if (typeof data.earned === 'number') entry.earned = data.earned;
+      renderToday();
+    } else {
+      entry.subtasks[si].done = !entry.subtasks[si].done;
+      renderToday();
+    }
+  } catch {
+    entry.subtasks[si].done = !entry.subtasks[si].done;
+    renderToday();
+  }
+}
+
+async function handleComplete(ti) {
+  const entry = state.todayTasks[ti];
+  if (!entry) return;
+
+  const btn = document.querySelector(`.btn-done[data-ti="${ti}"]`);
+  if (btn) btn.disabled = true;
+
+  try {
+    await apiPost({ action: 'completeTask', id: entry.task.id });
+    state.todayTasks.splice(ti, 1);
+    state.tasks = state.tasks.filter(t => t.id !== entry.task.id);
+    renderAll();
+  } catch {
+    if (btn) btn.disabled = false;
+    alert('Ошибка при завершении задачи');
+  }
+}
+
+// ── Utils ──────────────────────────────────────────────────
+function isUrgent(task) {
+  const d = taskDate(task);
+  return d !== null && d <= todayStr();
+}
+
+function calNumClass(ds, dl, mt) {
+  const ht = dl.has(ds), hm = mt.has(ds);
+  return 'cal-num' + (ht && hm ? ' cal-ring-both' : ht ? ' cal-ring-task' : hm ? ' cal-ring-meeting' : '');
+}
+
+function formatDate(ds) {
+  const [y, m, d] = ds.split('-');
+  return `${+d} ${MONTHS[+m - 1]} ${y}`;
+}
+
+function showError(msg) {
+  document.getElementById('backlog').innerHTML =
+    `<div class="empty-state">${esc(msg)}</div>`;
+}
+
+// ── Add form ───────────────────────────────────────────────
+function initAddForm() {
+  document.getElementById('f-quadrant').addEventListener('change', () => {
+    const q = document.getElementById('f-quadrant').value;
+    document.getElementById('f-when').type = q === 'Встреча' ? 'datetime-local' : 'date';
+  });
+
+  document.getElementById('f-submit').addEventListener('click', handleAddTask);
+}
+
+function resetAddForm() {
+  document.getElementById('f-task').value     = '';
+  document.getElementById('f-quadrant').value = 'A';
+  document.getElementById('f-size').value     = 'M';
+  const fw = document.getElementById('f-when');
+  fw.value = '';
+  fw.type  = 'date';
+}
+
+async function handleAddTask() {
+  const taskEl   = document.getElementById('f-task');
+  const taskText = taskEl.value.trim();
+  if (!taskText) { taskEl.focus(); return; }
+
+  const q    = document.getElementById('f-quadrant').value;
+  const size = document.getElementById('f-size').value;
+  const raw  = document.getElementById('f-when').value;
+  const when = raw ? (q === 'Встреча' ? raw.replace('T', ' ') : raw) : '';
+
+  const btn = document.getElementById('f-submit');
+  btn.disabled = true;
+
+  try {
+    await apiPost({ action: 'addTask', task: taskText, quadrant: q, size, when });
+    await fetchBacklog();
+    resetAddForm();
+  } catch {
+    alert('Ошибка при добавлении задачи');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Events ─────────────────────────────────────────────────
+document.getElementById('cal-prev').addEventListener('click', () => {
+  state.month--;
+  if (state.month < 0) { state.month = 11; state.year--; }
+  state.selectedDay = null;
+  renderCalendar();
+  document.getElementById('day-panel').innerHTML = '';
+});
+
+document.getElementById('cal-next').addEventListener('click', () => {
+  state.month++;
+  if (state.month > 11) { state.month = 0; state.year++; }
+  state.selectedDay = null;
+  renderCalendar();
+  document.getElementById('day-panel').innerHTML = '';
+});
+
+// ── Init ───────────────────────────────────────────────────
+initAddForm();
+fetchBacklog();
+</script>
+</body>
+</html>
