@@ -604,6 +604,74 @@
       padding: 3px 8px;
       font-size: 12px;
     }
+
+    /* ── Bank ────────────────────────────────────── */
+    .bank-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+
+    .bank-block:empty { display: none; }
+
+    .bank-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .bank-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+    .bank-wallet { font-size: 13px; color: var(--muted); }
+
+    .bank-bar {
+      height: 8px;
+      background: #eee;
+      border-radius: 20px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .bank-bar-fill {
+      height: 100%;
+      background: var(--q-c);
+      border-radius: 20px;
+      transition: width 0.3s ease;
+    }
+
+    .bank-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .bank-need { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+    .bank-rewards { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+
+    .bank-reward-btn {
+      text-align: left;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .bank-reward-btn:hover:not(:disabled) { border-color: var(--q-c); }
+    .bank-reward-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .bank-reward-meta { color: var(--muted); font-size: 11px; }
+
+    .bank-result {
+      margin-top: 12px;
+      background: #e8f5ed;
+      border: 1px solid var(--q-c);
+      color: var(--q-c);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -640,6 +708,9 @@
     <div id="warn-text"></div>
     <div id="today-tasks"></div>
   </section>
+
+  <!-- ── Bank ──────────────────────────────────── -->
+  <section id="bank-block" class="bank-block"></section>
 
   <div class="main-grid">
 
@@ -694,6 +765,9 @@ const state = {
   selectedDay: null,     // 'yyyy-MM-dd'
   formTaskId: null,      // task.id with open inline subtask form
   editingDateId: null,   // task.id with open date-edit input
+  bank: null,            // last getBank response
+  bankChoosing: false,   // is the "choose reward" list expanded
+  bankResult: '',        // text of the last unlocked reward (banner)
 };
 
 // ── API ────────────────────────────────────────────────────
@@ -727,6 +801,19 @@ function buildTodayEntry(task) {
   const done  = subtasks.filter(s => s.done).length;
   const earned = total ? Math.round((Number(task.points) || 0) * done / total) : 0;
   return { task, subtasks, earned };
+}
+
+async function fetchBank() {
+  try {
+    const r    = await fetch(`${API_URL}?action=getBank&token=${SECRET_TOKEN}`);
+    const data = await r.json();
+    if (data.ok) {
+      state.bank = data;
+      renderBank();
+    }
+  } catch {
+    // банка — не критичный блок, тихо пропускаем при сбое сети
+  }
 }
 
 async function apiPost(body) {
@@ -872,6 +959,91 @@ function renderTodayCard(entry, ti) {
     </div>
     ${stepsHtml}
   </div>`;
+}
+
+// ── Bank ───────────────────────────────────────────────────
+function renderBank() {
+  const el = document.getElementById('bank-block');
+  const b  = state.bank;
+  if (!b) { el.innerHTML = ''; return; }
+
+  const cost    = b.cost || 50;
+  const balance = b.balance || 0;
+  const pct     = Math.min(100, Math.round((balance / cost) * 100));
+  const need    = Math.max(0, cost - balance);
+  const can     = b.canUnlock;
+  const dis     = can ? '' : ' disabled';
+
+  const resultHtml = state.bankResult
+    ? `<div class="bank-result">🎉 Тебе выпало: ${esc(state.bankResult)}</div>`
+    : '';
+
+  const needHtml = can ? '' : `<div class="bank-need">Нужно ещё ${need} баллов до награды</div>`;
+
+  let chooseHtml = '';
+  if (state.bankChoosing) {
+    const rewards = b.rewards || [];
+    chooseHtml = rewards.length
+      ? `<div class="bank-rewards">${rewards.map(r => `
+          <button class="bank-reward-btn" data-id="${esc(r.id)}"${dis}>
+            ${esc(r.task)}
+            <span class="bank-reward-meta"> · ${esc(r.size || '')}${r.type ? ' · ' + esc(r.type) : ''}</span>
+          </button>`).join('')}</div>`
+      : `<div class="bank-need">Список наград пуст — добавь D-дела</div>`;
+  }
+
+  el.innerHTML = `
+    <div class="bank-header">
+      <span class="bank-title">🏆 Банка наград</span>
+      <span class="bank-wallet">${balance} / ${cost}</span>
+    </div>
+    <div class="bank-bar"><div class="bank-bar-fill" style="width:${pct}%"></div></div>
+    ${needHtml}
+    <div class="bank-actions">
+      <button class="btn-primary" id="bank-random"${dis}>Удиви меня 🎲</button>
+      <button class="btn-secondary" id="bank-choose"${dis}>Выбрать награду</button>
+    </div>
+    ${chooseHtml}
+    ${resultHtml}`;
+
+  const rndBtn = document.getElementById('bank-random');
+  const chsBtn = document.getElementById('bank-choose');
+  if (rndBtn) rndBtn.addEventListener('click', handleUnlockRandom);
+  if (chsBtn) chsBtn.addEventListener('click', () => {
+    state.bankChoosing = !state.bankChoosing;
+    renderBank();
+  });
+  el.querySelectorAll('.bank-reward-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleUnlockChoose(btn.dataset.id));
+  });
+}
+
+async function handleUnlockRandom() {
+  await unlockReward({ mode: 'random' });
+}
+
+async function handleUnlockChoose(id) {
+  await unlockReward({ mode: 'choose', id });
+}
+
+async function unlockReward(extra) {
+  const btns = document.querySelectorAll('#bank-random, #bank-choose, .bank-reward-btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    const res = await apiPost(Object.assign({ action: 'unlockReward' }, extra));
+    if (res.ok) {
+      state.bankResult   = res.reward ? res.reward.task : '';
+      state.bankChoosing = false;
+    } else {
+      alert(res.error === 'мало баллов'
+        ? `Не хватает баллов: ${res.balance} / ${res.cost}`
+        : 'Не удалось забрать награду');
+    }
+    await fetchBank();   // источник правды — свежий getBank
+  } catch {
+    alert('Ошибка при разблокировке награды');
+    await fetchBank();
+  }
 }
 
 // ── Calendar ───────────────────────────────────────────────
@@ -1288,6 +1460,7 @@ function buildAppleTouchIcon() {
 buildAppleTouchIcon();
 initAddForm();
 fetchBacklog();
+fetchBank();
 </script>
 </body>
 </html>
