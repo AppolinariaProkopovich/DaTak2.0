@@ -685,6 +685,81 @@
       font-size: 14px;
       font-weight: 600;
     }
+
+    /* ── Habits ──────────────────────────────────── */
+    .habits-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+
+    .habits-block:empty { display: none; }
+
+    .habits-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 12px;
+    }
+
+    .habit-row { margin-bottom: 16px; }
+    .habit-row:last-child { margin-bottom: 0; }
+
+    .habit-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 7px;
+    }
+
+    .habit-name { font-size: 14px; font-weight: 600; }
+    .habit-count { font-size: 12px; color: var(--muted); }
+    .habit-pts {
+      font-size: 11px;
+      color: var(--q-c);
+      background: #e8f5ed;
+      border-radius: 3px;
+      padding: 0 5px;
+      font-weight: 600;
+    }
+
+    .habit-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+      gap: 4px;
+    }
+
+    .habit-cell {
+      aspect-ratio: 1 / 1;
+      min-height: 26px;
+      border-radius: 5px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: var(--muted);
+      user-select: none;
+    }
+
+    .habit-cell.filled {
+      background: var(--q-c);
+      border-color: var(--q-c);
+      color: #fff;
+    }
+
+    .habit-cell.is-today {
+      cursor: pointer;
+      border: 2px solid var(--accent);
+      font-weight: 700;
+    }
+
+    .habit-cell.is-today:not(.filled) { color: var(--accent); }
+    .habit-cell.is-today:active { transform: scale(0.92); }
   </style>
 </head>
 <body>
@@ -724,6 +799,9 @@
 
   <!-- ── Bank ──────────────────────────────────── -->
   <section id="bank-block" class="bank-block"></section>
+
+  <!-- ── Habits ────────────────────────────────── -->
+  <section id="habits-block" class="habits-block"></section>
 
   <div class="main-grid">
 
@@ -781,6 +859,7 @@ const state = {
   bank: null,            // last getBank response
   bankChoosing: false,   // is the "choose reward" list expanded
   bankResult: '',        // text of the last unlocked reward (banner)
+  habits: null,          // last getHabits response
 };
 
 // ── API ────────────────────────────────────────────────────
@@ -826,6 +905,19 @@ async function fetchBank() {
     }
   } catch {
     // банка — не критичный блок, тихо пропускаем при сбое сети
+  }
+}
+
+async function fetchHabits() {
+  try {
+    const r    = await fetch(`${API_URL}?action=getHabits&token=${SECRET_TOKEN}`);
+    const data = await r.json();
+    if (data.ok) {
+      state.habits = data;
+      renderHabits();
+    }
+  } catch {
+    // привычки — не критичный блок, тихо пропускаем при сбое сети
   }
 }
 
@@ -1057,6 +1149,66 @@ async function unlockReward(extra) {
   } catch {
     alert('Ошибка при разблокировке награды');
     await fetchBank();
+  }
+}
+
+// ── Habits ─────────────────────────────────────────────────
+function daysInMonth(monthStr) {
+  // monthStr = 'YYYY-MM' → число дней
+  const [y, m] = monthStr.split('-').map(Number);
+  return new Date(y, m, 0).getDate();   // m здесь 1-based → день 0 след. месяца
+}
+
+function renderHabits() {
+  const el = document.getElementById('habits-block');
+  const h  = state.habits;
+  if (!h || !h.habits || !h.habits.length) { el.innerHTML = ''; return; }
+
+  const monthStr = h.month;            // 'YYYY-MM'
+  const today    = h.today;            // 'YYYY-MM-DD'
+  const nDays    = daysInMonth(monthStr);
+
+  const rows = h.habits.map(hab => {
+    const done = new Set(hab.daysThisMonth || []);
+    let cells = '';
+    for (let d = 1; d <= nDays; d++) {
+      const ds      = `${monthStr}-${pad(d)}`;
+      const filled  = done.has(ds);
+      const isToday = ds === today;
+      const cls = ['habit-cell',
+        filled  ? 'filled'   : '',
+        isToday ? 'is-today' : '',
+      ].filter(Boolean).join(' ');
+      const dataAttr = isToday ? ` data-habit="${esc(hab.name)}"` : '';
+      cells += `<div class="${cls}"${dataAttr}>${d}</div>`;
+    }
+    const pts = hab.points ? `<span class="habit-pts">+${hab.points}</span>` : '';
+    return `<div class="habit-row">
+      <div class="habit-head">
+        <span class="habit-name">${esc(hab.name)}</span>
+        <span class="habit-count">${hab.countThisMonth || 0} / ${nDays}</span>
+        ${pts}
+      </div>
+      <div class="habit-grid">${cells}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="habits-title">📆 Привычки</div>${rows}`;
+
+  // Кликабельны только клетки «сегодня».
+  el.querySelectorAll('.habit-cell.is-today').forEach(cell => {
+    cell.addEventListener('click', () => handleToggleHabit(cell.dataset.habit));
+  });
+}
+
+async function handleToggleHabit(name) {
+  if (!name) return;
+  try {
+    await apiPost({ action: 'toggleHabit', habit: name });
+    await fetchHabits();                       // источник правды — getHabits
+    if (typeof fetchBank === 'function') fetchBank();   // привычки влияют на кошелёк
+  } catch {
+    alert('Не удалось отметить привычку');
   }
 }
 
@@ -1475,6 +1627,7 @@ buildAppleTouchIcon();
 initAddForm();
 fetchBacklog();
 fetchBank();
+fetchHabits();
 </script>
 </body>
 </html>
