@@ -646,21 +646,34 @@
 
     .bank-rewards { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 
-    .bank-reward-btn {
-      text-align: left;
+    .bank-reward-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 7px;
       padding: 8px 10px;
       font-size: 13px;
+    }
+
+    .bank-reward-name { flex: 1; min-width: 0; word-break: break-word; }
+    .bank-reward-meta { color: var(--muted); font-size: 11px; }
+
+    .bank-take-btn {
+      flex-shrink: 0;
+      background: var(--q-c);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 13px;
       font-family: inherit;
-      color: var(--text);
       cursor: pointer;
     }
 
-    .bank-reward-btn:hover:not(:disabled) { border-color: var(--q-c); }
-    .bank-reward-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .bank-reward-meta { color: var(--muted); font-size: 11px; }
+    .bank-take-btn:hover:not(:disabled) { background: #1a6e3c; }
+    .bank-take-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .bank-result {
       margin-top: 12px;
@@ -982,13 +995,14 @@ function renderBank() {
 
   let chooseHtml = '';
   if (state.bankChoosing) {
+    // Витрина: список виден всегда. Кнопка «взять» — только при достатке баллов.
     const rewards = b.rewards || [];
     chooseHtml = rewards.length
       ? `<div class="bank-rewards">${rewards.map(r => `
-          <button class="bank-reward-btn" data-id="${esc(r.id)}"${dis}>
-            ${esc(r.task)}
-            <span class="bank-reward-meta"> · ${esc(r.size || '')}${r.type ? ' · ' + esc(r.type) : ''}</span>
-          </button>`).join('')}</div>`
+          <div class="bank-reward-row">
+            <span class="bank-reward-name">${esc(r.task)}<span class="bank-reward-meta"> · ${esc(r.size || '')}${r.type ? ' · ' + esc(r.type) : ''}</span></span>
+            ${can ? `<button class="bank-take-btn" data-id="${esc(r.id)}">взять</button>` : ''}
+          </div>`).join('')}</div>`
       : `<div class="bank-need">Список наград пуст — добавь D-дела</div>`;
   }
 
@@ -1001,7 +1015,7 @@ function renderBank() {
     ${needHtml}
     <div class="bank-actions">
       <button class="btn-primary" id="bank-random"${dis}>Удиви меня 🎲</button>
-      <button class="btn-secondary" id="bank-choose"${dis}>Выбрать награду</button>
+      <button class="btn-secondary" id="bank-choose">Выбрать награду</button>
     </div>
     ${chooseHtml}
     ${resultHtml}`;
@@ -1013,7 +1027,7 @@ function renderBank() {
     state.bankChoosing = !state.bankChoosing;
     renderBank();
   });
-  el.querySelectorAll('.bank-reward-btn').forEach(btn => {
+  el.querySelectorAll('.bank-take-btn').forEach(btn => {
     btn.addEventListener('click', () => handleUnlockChoose(btn.dataset.id));
   });
 }
@@ -1027,7 +1041,7 @@ async function handleUnlockChoose(id) {
 }
 
 async function unlockReward(extra) {
-  const btns = document.querySelectorAll('#bank-random, #bank-choose, .bank-reward-btn');
+  const btns = document.querySelectorAll('#bank-random, #bank-choose, .bank-take-btn');
   btns.forEach(b => b.disabled = true);
   try {
     const res = await apiPost(Object.assign({ action: 'unlockReward' }, extra));
