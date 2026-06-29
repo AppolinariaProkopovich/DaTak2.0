@@ -698,18 +698,35 @@ const state = {
 
 // ── API ────────────────────────────────────────────────────
 async function fetchBacklog() {
+  // Источник правды: бэклог (getBacklog) + «Сегодня» (getToday) с сервера.
   try {
-    const r    = await fetch(`${API_URL}?action=getBacklog&token=${SECRET_TOKEN}`);
-    const data = await r.json();
-    if (data.ok) {
-      state.tasks = data.tasks;
+    const [bRes, tRes] = await Promise.all([
+      fetch(`${API_URL}?action=getBacklog&token=${SECRET_TOKEN}`).then(r => r.json()),
+      fetch(`${API_URL}?action=getToday&token=${SECRET_TOKEN}`).then(r => r.json()),
+    ]);
+    if (bRes.ok && tRes.ok) {
+      state.tasks = bRes.tasks;
+      // Карточки «Сегодня» строим из getToday; полные поля (дата/неприятная)
+      // подтягиваем из бэклога по id (там та же задача со статусом «открыта»).
+      state.todayTasks = tRes.tasks.map(tt => {
+        const full = bRes.tasks.find(b => b.id === tt.id);
+        return buildTodayEntry(full || tt);
+      });
       renderAll();
     } else {
-      showError('Ошибка при загрузке бэклога');
+      showError('Ошибка при загрузке данных');
     }
   } catch {
     showError('Нет соединения с сервером');
   }
+}
+
+function buildTodayEntry(task) {
+  const subtasks = parseSubtasks(task.subtasks);
+  const total = subtasks.length;
+  const done  = subtasks.filter(s => s.done).length;
+  const earned = total ? Math.round((Number(task.points) || 0) * done / total) : 0;
+  return { task, subtasks, earned };
 }
 
 async function apiPost(body) {
@@ -1061,7 +1078,7 @@ function handleAddToToday(taskId) {
 
   // Meetings always go straight in, regardless of size
   if (task.quadrant === 'Встреча' || task.size === 'S') {
-    addToTodayDirect(task);
+    sessionToToday(task);
     return;
   }
 
@@ -1085,21 +1102,24 @@ async function submitSubtaskForm(taskId) {
 
   try {
     await apiPost({ action: 'setSubtasks', id: taskId, steps: lines.join('|') });
-    const task = state.tasks.find(t => t.id === taskId);
-    if (task) task.subtasks = lines.map(l => `${l}:0`).join('|');
+    await apiPost({ action: 'setSession', id: taskId, session: 'Сегодня' });
     state.formTaskId = null;
-    addToTodayDirect(state.tasks.find(t => t.id === taskId));
+    await fetchBacklog();
   } catch {
     if (btn) btn.disabled = false;
     alert('Ошибка сохранения подзадач');
   }
 }
 
-function addToTodayDirect(task) {
+async function sessionToToday(task) {
   if (!task) return;
-  state.todayTasks.push({ task, subtasks: parseSubtasks(task.subtasks), earned: 0 });
   state.formTaskId = null;
-  renderAll();
+  try {
+    await apiPost({ action: 'setSession', id: task.id, session: 'Сегодня' });
+    await fetchBacklog();   // перечитываем «Сегодня» из getToday
+  } catch {
+    alert('Не удалось положить в сегодня');
+  }
 }
 
 async function handleUpdateDate(taskId, dateValue, isMeeting) {
@@ -1141,11 +1161,16 @@ async function handleToggle(ti, si) {
   }
 }
 
-function handleRemoveFromToday(ti) {
-  // Убрать из «Сегодня» обратно в список (в памяти; в таблице задача всё это
-  // время осталась «открыта», так что просто снова покажется в бэклоге).
-  state.todayTasks.splice(ti, 1);
-  renderAll();
+async function handleRemoveFromToday(ti) {
+  // Убрать из «Сегодня» обратно в список: чистим колонку «сессия» на сервере.
+  const entry = state.todayTasks[ti];
+  if (!entry) return;
+  try {
+    await apiPost({ action: 'setSession', id: entry.task.id, session: '' });
+    await fetchBacklog();
+  } catch {
+    alert('Не удалось убрать из сегодня');
+  }
 }
 
 async function handleComplete(ti) {
@@ -1157,9 +1182,7 @@ async function handleComplete(ti) {
 
   try {
     await apiPost({ action: 'completeTask', id: entry.task.id });
-    state.todayTasks.splice(ti, 1);
-    state.tasks = state.tasks.filter(t => t.id !== entry.task.id);
-    renderAll();
+    await fetchBacklog();   // задача стала «готово» → уходит и из бэклога, и из сегодня
   } catch {
     if (btn) btn.disabled = false;
     alert('Ошибка при завершении задачи');

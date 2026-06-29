@@ -26,5 +26,7 @@
 - 2026-06-29: Редактирование даты прямо в бэклоге — кнопка ✎ у каждой записи; для задач открывает `<input type="date">`, для встреч — `<input type="datetime-local">`; при изменении POST action=updateDate, id, date (yyyy-MM-dd или yyyy-MM-dd HH:mm), token; после успеха перечитывает getBacklog. Бэкенд-эндпоинт updateDate будет добавлен в Apps Script.
 - 2026-06-29: Баг-фикс — смена даты не сохранялась (event `change` не отправлял запрос). Добавлена явная кнопка «Сохранить» рядом с полем даты; по клику явный POST action=updateDate с form-data (action, id, date, token). Добавлено логирование console.log URL и ответа сервера. Запрос updateDate теперь виден в Network.
 
+- 2026-06-29: «Сегодня» теперь хранится на сервере. Кнопки «→ сегодня» и ↩ шлют POST `setSession` (session='Сегодня' / ''), блок «Сегодня» на загрузке тянется из `getToday` (через `fetchBacklog`, Promise.all с getBacklog). Убрана `addToTodayDirect` (память) → `sessionToToday` (сервер). Выбор «сегодня» переживает F5.
+
 ## TODO
 - Бонус +30 баллов за все закрытые задачи дня (отложено)

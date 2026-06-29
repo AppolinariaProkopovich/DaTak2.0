@@ -1,0 +1,270 @@
+// ============================================================
+//  Да так 2.0 — бэкенд v1 (Google Apps Script)
+//  Привязан к таблице: Расширения → Apps Script
+// ============================================================
+
+// ---- Настройки (можно менять) ----
+const SECRET = 'H4zNqR8uhlaNX4qYDtxeV3qCPhq9VOsjy85rB8G7agGCpdJma8raW5Vvh37aJSlt';
+const SHEET_TASKS = 'Задачи';
+const SHEET_REF   = 'Справочники';
+const POINTS = { S: 10, M: 30, L: 50 };   // базовые баллы по размеру
+const NASTY_BONUS = 15;                  // бонус за «неприятную»
+const SPHERES = ['Учёба','Наука','Спорт','Быт','Здоровье','Соцсвязи','Группы','Хобби','Отдых','Личное'];
+
+const HEADERS = ['id','добавлено','задача','квадрант','размер','баллы','неприятная','под-шаги','на когда','статус','выполнено','сессия'];
+
+// ---- РАЗОВАЯ настройка: создаёт листы и выпадашки ----
+// Запусти эту функцию один раз (кнопка ▶ Run, выбрав setup).
+function setup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  let t = ss.getSheetByName(SHEET_TASKS) || ss.insertSheet(SHEET_TASKS);
+  t.clear();
+  t.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold');
+  t.setFrozenRows(1);
+  setValidation_(t, 4,  ['A','B','C','D']);
+  setValidation_(t, 5,  ['S','M','L']);
+  setValidation_(t, 7,  ['да']);
+  setValidation_(t, 9,  ['Сегодня','Завтра','Без даты']);
+  setValidation_(t, 10, ['открыта','готово','отложена']);
+
+  let r = ss.getSheetByName(SHEET_REF) || ss.insertSheet(SHEET_REF);
+  r.clear();
+  r.getRange(1, 1, 1, 5).setValues([['Сферы','Квадранты','Размеры','Статусы','На когда']]).setFontWeight('bold');
+  writeCol_(r, 1, SPHERES);
+  writeCol_(r, 2, ['A','B','C','D']);
+  writeCol_(r, 3, ['S','M','L']);
+  writeCol_(r, 4, ['открыта','готово','отложена']);
+  writeCol_(r, 5, ['Сегодня','Завтра','Без даты']);
+
+  SpreadsheetApp.getUi().alert('Готово — листы «Задачи» и «Справочники» созданы.');
+}
+
+function setValidation_(sheet, col, values) {
+  const rule = SpreadsheetApp.newDataValidation().requireValueInList(values, true).build();
+  sheet.getRange(2, col, 1000).setDataValidation(rule);
+}
+function writeCol_(sheet, col, arr) {
+  sheet.getRange(2, col, arr.length, 1).setValues(arr.map(v => [v]));
+}
+
+// ---- ЗАПИСЬ: шорткат шлёт сюда (POST, форма) ----
+function doPost(e) {
+  try {
+    if (e.parameter.token !== SECRET) {
+      return json_({ ok: false, error: 'нет доступа' });
+    }
+    const p = e.parameter;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const t = ss.getSheetByName(SHEET_TASKS);
+
+    // --- добавить задачу ---
+    if (p.action === 'addTask') {
+      const rawQuad = p.quadrant || 'B';
+      const isMeeting = (rawQuad === 'Встреча');
+      const quadrant = isMeeting ? 'Встреча' : rawQuad.toUpperCase();
+      const size = (p.size || 'M').toUpperCase();
+      const nasty = (p.nasty === 'да' || p.nasty === '1' || p.nasty === 'true');
+      const points = isMeeting ? 0 : (POINTS[size] || 0) + (nasty ? NASTY_BONUS : 0);
+      const id = 't' + Date.now();
+      t.appendRow([
+        id, new Date(), p.task || '', quadrant, size,
+        points, nasty ? 'да' : '', '', p.when || 'Без даты', 'открыта', ''
+      ]);
+      return json_({ ok: true, id: id, points: points });
+    }
+
+    // --- записать список подзадач ---
+    if (p.action === 'setSubtasks') {
+      const data = t.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === p.id) {
+          const steps = (p.steps || '').split('|').filter(String)
+            .map(function(s){ return s + ':0'; }).join('|');
+          t.getRange(i + 1, 8).setValue(steps);
+          return json_({ ok: true, subtasks: steps });
+        }
+      }
+      return json_({ ok: false, error: 'задача не найдена' });
+    }
+
+    // --- переключить один шаг ---
+    if (p.action === 'toggleSubtask') {
+      const data = t.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === p.id) {
+          const idx = parseInt(p.index, 10);
+          const parts = String(data[i][7]).split('|').filter(String);
+          if (!parts[idx]) return json_({ ok: false, error: 'шаг не найден' });
+          const bits = parts[idx].split(':');
+          bits[1] = (bits[1] === '1') ? '0' : '1';
+          parts[idx] = bits.join(':');
+          t.getRange(i + 1, 8).setValue(parts.join('|'));
+          const total = parts.length;
+          const done = parts.filter(function(x){ return x.split(':')[1] === '1'; }).length;
+          const taskPoints = Number(data[i][5]) || 0;
+          const earned = Math.round(taskPoints * done / total);
+          return json_({ ok: true, done: done, total: total, earned: earned });
+        }
+      }
+      return json_({ ok: false, error: 'задача не найдена' });
+    }
+
+    // --- отметить задачу выполненной ---
+    if (p.action === 'completeTask') {
+      const data = t.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === p.id) {
+          t.getRange(i + 1, 10).setValue('готово');
+          t.getRange(i + 1, 11).setValue(new Date());
+          return json_({ ok: true, points: data[i][5] });
+        }
+      }
+      return json_({ ok: false, error: 'задача не найдена' });
+    }
+
+    // --- изменить дату ---
+    if (p.action === 'updateDate') {
+      const data = t.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === p.id) {
+          t.getRange(i + 1, 9).setValue(p.date || '');
+          return json_({ ok: true });
+        }
+      }
+      return json_({ ok: false, error: 'задача не найдена' });
+    }
+
+    // --- вернуть задачу из выполненных ---
+    if (p.action === 'reopenTask') {
+      const data = t.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === p.id) {
+          t.getRange(i + 1, 10).setValue('открыта');
+          t.getRange(i + 1, 11).setValue('');
+          return json_({ ok: true });
+        }
+      }
+      return json_({ ok: false, error: 'задача не найдена' });
+    }
+
+    // --- положить/убрать задачу из «сегодня» ---
+    if (p.action === 'setSession') {
+      const data = t.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === p.id) {
+          t.getRange(i + 1, 12).setValue(p.session || '');  // 'Сегодня' или пусто
+          return json_({ ok: true });
+        }
+      }
+      return json_({ ok: false, error: 'задача не найдена' });
+    }
+
+    return json_({ ok: false, error: 'неизвестный action' });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  }
+}
+
+// ---- ЧТЕНИЕ: страница и виджет берут отсюда (GET) ----
+function doGet(e) {
+  if (e.parameter.token !== SECRET) {
+    return ContentService.createTextOutput(JSON.stringify({ ok:false, error:'нет доступа' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  const action = (e.parameter.action) || 'getToday';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  if (action === 'getLists') {
+    const r = ss.getSheetByName(SHEET_REF);
+    const spheres = r.getRange(2, 1, Math.max(r.getLastRow() - 1, 1)).getValues().flat().filter(String);
+    return json_({ ok: true, spheres: spheres.join('|'), quadrants: 'A|B|C|D', sizes: 'S|M|L', when: 'Сегодня|Завтра|Без даты' });
+  }
+
+  if (action === 'getBacklog') {
+    const t = ss.getSheetByName(SHEET_TASKS);
+    const data = t.getDataRange().getValues();
+    const tz = Session.getScriptTimeZone();
+    const w = { A: 0, B: 1, C: 2, D: 3, 'Встреча': 4 };
+    const out = [];
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[9] !== 'открыта') continue;            // только открытые
+      // дата (срок/дедлайн/встреча) → строкой yyyy-MM-dd, если есть
+      let dateStr = '';
+      const raw = row[8];
+      if (raw instanceof Date) {
+        dateStr = Utilities.formatDate(raw, tz, 'yyyy-MM-dd HH:mm');
+      }
+      out.push({
+        id: row[0],
+        task: row[2],
+        quadrant: row[3],
+        size: row[4],
+        points: row[5],
+        nasty: row[6] === 'да',
+        subtasks: row[7],
+        date: dateStr,          // пусто = без срока
+        when: (raw instanceof Date) ? '' : String(raw || '')
+      });
+    }
+    out.sort(function(a, b){
+      return (w[a.quadrant] - w[b.quadrant]);        // A→B→C→D→Встреча
+    });
+    return json_({ ok: true, tasks: out });
+  }
+
+  if (action === 'getDone') {
+    const t = ss.getSheetByName(SHEET_TASKS);
+    const data = t.getDataRange().getValues();
+    const tz = Session.getScriptTimeZone();
+    const out = [];
+
+    for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[9] !== 'готово') continue; // только выполненные
+    let doneStr = '';
+    const dn = row[10]; // колонка «выполнено»
+    if (dn instanceof Date) {
+    doneStr = Utilities.formatDate(dn, tz, 'yyyy-MM-dd');
+    }
+    out.push({
+    id: row[0],
+    task: row[2],
+    quadrant: row[3],
+    size: row[4],
+    points: row[5],
+    done: doneStr
+    });
+    }
+    out.sort(function(a, b) {
+    return (b.done || '').localeCompare(a.done || '');
+    });
+    return json_({ ok: true, tasks: out });
+}
+
+  // getToday — задачи, помеченные «Сегодня» в колонке «сессия»
+  const t = ss.getSheetByName(SHEET_TASKS);
+  const data = t.getDataRange().getValues();
+  const tz = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const w = { A: 0, B: 1, C: 2, D: 3, 'Встреча': 4 };
+  const out = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[9] !== 'открыта') continue;
+    if (row[11] !== 'Сегодня') continue;   // колонка «сессия»
+    out.push({
+      id: row[0], task: row[2], quadrant: row[3],
+      size: row[4], points: row[5], subtasks: row[7]
+    });
+  }
+  out.sort((a, b) => w[a.quadrant] - w[b.quadrant]);
+  return json_({ ok: true, date: today, tasks: out });
+}
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
