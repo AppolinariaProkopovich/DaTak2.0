@@ -24,6 +24,7 @@
 
 - 2026-06-29: Apple Touch Icon — 🐸 на светлом фоне (#f4f2ee), генерируется через Canvas в data URI; добавлены мета-теги apple-touch-icon, theme-color=#f4f2ee, apple-mobile-web-app-title=«Дела». Заголовок страницы переименован в «Дела».
 - 2026-06-29: Редактирование даты прямо в бэклоге — кнопка ✎ у каждой записи; для задач открывает `<input type="date">`, для встреч — `<input type="datetime-local">`; при изменении POST action=updateDate, id, date (yyyy-MM-dd или yyyy-MM-dd HH:mm), token; после успеха перечитывает getBacklog. Бэкенд-эндпоинт updateDate будет добавлен в Apps Script.
+- 2026-06-29: Баг-фикс — смена даты не сохранялась (event `change` не отправлял запрос). Добавлена явная кнопка «Сохранить» рядом с полем даты; по клику явный POST action=updateDate с form-data (action, id, date, token). Добавлено логирование console.log URL и ответа сервера. Запрос updateDate теперь виден в Network.
 
 ## TODO
 - Бонус +30 баллов за все закрытые задачи дня (отложено)

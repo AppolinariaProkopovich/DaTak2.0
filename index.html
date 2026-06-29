@@ -937,9 +937,12 @@ function renderBacklog() {
     });
   });
 
-  el.querySelectorAll('.date-edit-input').forEach(inp => {
-    inp.addEventListener('change', () => {
-      handleUpdateDate(inp.dataset.id, inp.value, inp.dataset.meeting === 'true');
+  el.querySelectorAll('.date-edit-save').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const isMeeting = btn.dataset.meeting === 'true';
+      const inp = el.querySelector(`.date-edit-input[data-id="${CSS.escape(id)}"]`);
+      if (inp) handleUpdateDate(id, inp.value, isMeeting);
     });
   });
 
@@ -1023,6 +1026,7 @@ function renderDateEditForm(task) {
   return `<div class="date-edit-form">
     <input type="${inputType}" class="f-date date-edit-input" value="${esc(val)}"
            data-id="${esc(task.id)}" data-meeting="${isMeeting}">
+    <button class="btn-primary date-edit-save" data-id="${esc(task.id)}" data-meeting="${isMeeting}">Сохранить</button>
     <button class="btn-secondary date-edit-cancel" data-id="${esc(task.id)}">✕</button>
   </div>`;
 }
@@ -1081,13 +1085,17 @@ function addToTodayDirect(task) {
 }
 
 async function handleUpdateDate(taskId, dateValue, isMeeting) {
-  if (!dateValue) return;
+  if (!dateValue) { console.warn('[updateDate] пустое значение даты, запрос не отправлен'); return; }
   const date = isMeeting ? dateValue.replace('T', ' ') : dateValue;
+  const payload = { action: 'updateDate', id: taskId, date };
+  console.log('[updateDate] → POST', API_URL, payload);
   try {
-    await apiPost({ action: 'updateDate', id: taskId, date });
+    const result = await apiPost(payload);
+    console.log('[updateDate] ← ответ:', result);
     state.editingDateId = null;
     await fetchBacklog();
-  } catch {
+  } catch(e) {
+    console.error('[updateDate] ошибка:', e);
     alert('Ошибка при изменении даты');
   }
 }
