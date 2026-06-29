@@ -146,6 +146,20 @@
 
     .btn-done:hover { background: #f0f0f0; }
 
+    .btn-remove {
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .btn-remove:hover { background: #f0f0f0; color: var(--text); }
+
     .btn-done.pulse {
       background: #e8f7ee;
       border-color: var(--q-c);
@@ -805,6 +819,9 @@ function renderToday() {
   el.querySelectorAll('.btn-done').forEach(btn => {
     btn.addEventListener('click', () => handleComplete(+btn.dataset.ti));
   });
+  el.querySelectorAll('.btn-remove').forEach(btn => {
+    btn.addEventListener('click', () => handleRemoveFromToday(+btn.dataset.ti));
+  });
 }
 
 function renderTodayCard(entry, ti) {
@@ -833,6 +850,7 @@ function renderTodayCard(entry, ti) {
         <div class="today-card-name">${esc(task.task)}${task.nasty ? '<em class="nasty">!</em>' : ''}</div>
         <div class="today-card-meta">${meta.join(' · ')}</div>
       </div>
+      <button class="btn-remove" data-ti="${ti}" title="Вернуть в список">↩</button>
       <button class="btn-done${allDone ? ' pulse' : ''}" data-ti="${ti}">Готово ✓</button>
     </div>
     ${stepsHtml}
@@ -1121,6 +1139,13 @@ async function handleToggle(ti, si) {
     entry.subtasks[si].done = !entry.subtasks[si].done;
     renderToday();
   }
+}
+
+function handleRemoveFromToday(ti) {
+  // Убрать из «Сегодня» обратно в список (в памяти; в таблице задача всё это
+  // время осталась «открыта», так что просто снова покажется в бэклоге).
+  state.todayTasks.splice(ti, 1);
+  renderAll();
 }
 
 async function handleComplete(ti) {
