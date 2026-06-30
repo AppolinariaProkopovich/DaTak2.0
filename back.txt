@@ -332,7 +332,9 @@ if (action === 'getBank') {
     const h = ss.getSheetByName(SHEET_HABITS);
     const tz = Session.getScriptTimeZone();
     const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-    const ym = today.slice(0, 7);                    // 'yyyy-MM' текущего месяца
+    const ym = (e.parameter.month && /^\d{4}-\d{2}$/.test(e.parameter.month))
+      ? e.parameter.month            // запрошенный месяц 'yyyy-MM'
+      : today.slice(0, 7);           // по умолчанию — текущий
     const out = [];
     if (h && h.getLastRow() > 1) {
       const data = h.getRange(2, 1, h.getLastRow() - 1, 3).getValues();
