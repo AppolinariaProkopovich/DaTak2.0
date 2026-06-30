@@ -9,9 +9,14 @@ const SHEET_TASKS = 'Задачи';
 const SHEET_REF   = 'Справочники';
 const POINTS = { S: 10, M: 30, L: 50 };   // базовые баллы по размеру
 const NASTY_BONUS = 15;                  // бонус за «неприятную»
+const REWARD_COST = 50;                       // цена любой награды (порог банки)
+const SHEET_REWARDS_LOG = 'История наград';   // лог потраченного
+const REWARDS_LOG_HEADERS = ['дата','награда','id','тип'];
+const SHEET_HABITS = 'Привычки';
+const HABITS_HEADERS = ['привычка','баллы','отмечено'];
 const SPHERES = ['Учёба','Наука','Спорт','Быт','Здоровье','Соцсвязи','Группы','Хобби','Отдых','Личное'];
 
-const HEADERS = ['id','добавлено','задача','квадрант','размер','баллы','неприятная','под-шаги','на когда','статус','выполнено','сессия'];
+const HEADERS = ['id','добавлено','задача','квадрант','размер','баллы','неприятная','под-шаги','на когда','статус','выполнено','сессия', 'награда'];
 
 // ---- РАЗОВАЯ настройка: создаёт листы и выпадашки ----
 // Запусти эту функцию один раз (кнопка ▶ Run, выбрав setup).
@@ -160,6 +165,63 @@ function doPost(e) {
       return json_({ ok: false, error: 'задача не найдена' });
     }
 
+    // --- разблокировать награду (D-дело): лотерея или выбор ---
+    if (p.action === 'unlockReward') {
+      const balance = walletBalance_(ss);
+      if (balance < REWARD_COST) {
+        return json_({ ok: false, error: 'мало баллов', balance: balance, cost: REWARD_COST });
+      }
+      const data = t.getDataRange().getValues();
+      const avail = [];
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (row[3] !== 'D') continue;                       // награды = только D
+        const type = String(row[12] || 'разовая');          // пусто = разовая
+        if (type === 'использована') continue;              // уже забрана
+        avail.push({ rowIndex: i, id: row[0], task: row[2], size: row[4], type: type });
+      }
+      if (avail.length === 0) {
+        return json_({ ok: false, error: 'нет доступных наград', balance: balance });
+      }
+      let chosen;
+      if (p.mode === 'choose') {                            // «хочу вот это»
+        chosen = avail.find(function(r){ return r.id === p.id; });
+        if (!chosen) return json_({ ok: false, error: 'награда недоступна' });
+      } else {                                              // лотерея «удиви меня»
+        chosen = avail[Math.floor(Math.random() * avail.length)];
+      }
+      const hist = ensureSheet_(ss, SHEET_REWARDS_LOG, REWARDS_LOG_HEADERS);
+      hist.appendRow([new Date(), chosen.task, chosen.id, chosen.type]);  // списали 50 (одна строка лога)
+      if (chosen.type !== 'повтор') {                       // разовая уходит из банки
+        t.getRange(chosen.rowIndex + 1, 13).setValue('использована');
+      }
+      return json_({
+        ok: true,
+        reward: { id: chosen.id, task: chosen.task, size: chosen.size, type: chosen.type },
+        balance: balance - REWARD_COST
+      });
+    }
+
+// --- отметить/снять привычку за день ---
+    if (p.action === 'toggleHabit') {
+      const h = ensureSheet_(ss, SHEET_HABITS, HABITS_HEADERS);
+      const day = p.day || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      const data = h.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][0]) === String(p.habit)) {
+          let days = parseDays_(data[i][2]);
+          const pos = days.indexOf(day);
+          if (pos === -1) days.push(day);
+          else days.splice(pos, 1);
+          const cell = h.getRange(i + 1, 3);
+          cell.setNumberFormat('@');
+          cell.setValue(days.join('|'));
+          return json_({ ok: true, habit: p.habit, day: day, marked: (pos === -1), count: days.length });
+        }
+      }
+      return json_({ ok: false, error: 'привычка не найдена' });
+    }
+
     return json_({ ok: false, error: 'неизвестный action' });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -190,7 +252,8 @@ function doGet(e) {
 
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      if (row[9] !== 'открыта') continue;            // только открытые
+      if (row[9] !== 'открыта') continue;
+      if (row[3] === 'D') continue;             // только открытые
       // дата (срок/дедлайн/встреча) → строкой yyyy-MM-dd, если есть
       let dateStr = '';
       const raw = row[8];
@@ -244,6 +307,51 @@ function doGet(e) {
     return json_({ ok: true, tasks: out });
 }
 
+if (action === 'getBank') {
+    const t = ss.getSheetByName(SHEET_TASKS);
+    const data = t.getDataRange().getValues();
+    const balance = walletBalance_(ss);
+    const rewards = [];
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[3] !== 'D') continue;
+      const type = String(row[12] || 'разовая');
+      if (type === 'использована') continue;
+      rewards.push({ id: row[0], task: row[2], size: row[4], type: type });
+    }
+    return json_({
+      ok: true,
+      balance: balance,
+      cost: REWARD_COST,
+      canUnlock: balance >= REWARD_COST,
+      rewards: rewards
+    });
+  }
+
+  if (action === 'getHabits') {
+    const h = ss.getSheetByName(SHEET_HABITS);
+    const tz = Session.getScriptTimeZone();
+    const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    const ym = today.slice(0, 7);                    // 'yyyy-MM' текущего месяца
+    const out = [];
+    if (h && h.getLastRow() > 1) {
+      const data = h.getRange(2, 1, h.getLastRow() - 1, 3).getValues();
+      for (let i = 0; i < data.length; i++) {
+        if (!data[i][0]) continue;
+        const days = parseDays_(data[i][2]);
+        const thisMonth = days.filter(function(d){ return d.slice(0, 7) === ym; });
+        out.push({
+          name: data[i][0],
+          points: Number(data[i][1]) || 0,
+          daysThisMonth: thisMonth,                  // массив 'yyyy-MM-dd' за текущий месяц
+          countThisMonth: thisMonth.length,
+          markedToday: days.indexOf(today) !== -1
+        });
+      }
+    }
+    return json_({ ok: true, month: ym, today: today, habits: out });
+  }
+
   // getToday — задачи, помеченные «Сегодня» в колонке «сессия»
   const t = ss.getSheetByName(SHEET_TASKS);
   const data = t.getDataRange().getValues();
@@ -263,6 +371,59 @@ function doGet(e) {
   }
   out.sort((a, b) => w[a.quadrant] - w[b.quadrant]);
   return json_({ ok: true, date: today, tasks: out });
+}
+
+// кошелёк = (баллы закрытых A/B/C) + (баллы отмеченных дней привычек) − (разблокировки × цену)
+function walletBalance_(ss) {
+  const t = ss.getSheetByName(SHEET_TASKS);
+  const data = t.getDataRange().getValues();
+  let earned = 0;
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[9] === 'готово' && row[3] !== 'D') {   // D не зарабатывает
+      earned += Number(row[5]) || 0;
+    }
+  }
+  // баллы привычек: за каждый отмеченный день — цена привычки
+  const h = ss.getSheetByName(SHEET_HABITS);
+  if (h && h.getLastRow() > 1) {
+    const hd = h.getRange(2, 1, h.getLastRow() - 1, 3).getValues();
+    for (let i = 0; i < hd.length; i++) {
+      const pts = Number(hd[i][1]) || 0;
+      const days = parseDays_(hd[i][2]).length;
+      earned += pts * days;
+    }
+  }
+  const log = ss.getSheetByName(SHEET_REWARDS_LOG);
+  const unlocks = log ? Math.max(log.getLastRow() - 1, 0) : 0;
+  return earned - unlocks * REWARD_COST;
+}
+
+// создаёт лист с шапкой, если его ещё нет
+function ensureSheet_(ss, name, headers) {
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// разбирает колонку «отмечено» в массив строк 'yyyy-MM-dd', что бы там ни лежало
+function parseDays_(cellValue) {
+  const tz = Session.getScriptTimeZone();
+  if (cellValue instanceof Date) {
+    return [Utilities.formatDate(cellValue, tz, 'yyyy-MM-dd')];
+  }
+  return String(cellValue || '').split('|').map(function(s){
+    s = s.trim();
+    const d = new Date(s);
+    if (!isNaN(d) && /\d{4}/.test(s) && s.indexOf('-') === -1) {
+      return Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+    }
+    return s;
+  }).filter(String);
 }
 
 function json_(obj) {
