@@ -795,70 +795,146 @@
 
     .habit-cell.is-today:not(.filled) { color: var(--accent); }
     .habit-cell.is-today:active { transform: scale(0.92); }
+
+    /* ── Tabs ────────────────────────────────────── */
+    .hidden { display: none !important; }
+
+    .tabs-bar {
+      display: flex;
+      gap: 2px;
+      background: var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      margin-bottom: 14px;
+      width: fit-content;
+    }
+
+    .tab-btn {
+      padding: 6px 24px;
+      border: none;
+      background: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 500;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .tab-btn.active {
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* ── Compact month nav ───────────────────────── */
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 8px 16px;
+      margin-bottom: 14px;
+    }
+
+    .month-nav-title {
+      font-size: 14px;
+      font-weight: 600;
+      min-width: 130px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
 <div class="app">
 
-  <!-- ── Add form ──────────────────────────────── -->
-  <div class="add-wrap">
-    <div id="add-form" class="add-form-panel">
-      <input type="text" id="f-task" class="f-text" placeholder="＋ Новая задача…">
-      <select id="f-quadrant" class="f-select">
-        <option value="A">A · важно и срочно</option>
-        <option value="B">B · важно, не срочно</option>
-        <option value="C">C · срочно, не важно</option>
-        <option value="D">D · не срочно, не важно</option>
-        <option value="Встреча">Встреча</option>
-      </select>
-      <select id="f-size" class="f-select">
-        <option value="S">S</option>
-        <option value="M" selected>M</option>
-        <option value="L">L</option>
-      </select>
-      <input type="date" id="f-when" class="f-date">
-      <button id="f-submit" class="btn-primary">Добавить</button>
-    </div>
+  <!-- ── Tab bar ──────────────────────────────── -->
+  <div class="tabs-bar">
+    <button class="tab-btn active" id="tab-tasks">Задачи</button>
+    <button class="tab-btn" id="tab-habits">Привычки</button>
   </div>
 
-  <!-- ── Today ─────────────────────────────────── -->
-  <section class="today-block">
-    <div class="today-header">
-      <span class="today-title">Сегодня</span>
-      <div id="traffic-light" class="traffic-light"></div>
-      <span id="tl-hours" class="tl-hours"></span>
-    </div>
-    <div id="warn-text"></div>
-    <div id="today-tasks"></div>
-  </section>
+  <!-- ══ Pane: Задачи ════════════════════════════ -->
+  <div id="pane-tasks">
 
-  <!-- ── Bank ──────────────────────────────────── -->
-  <section id="bank-block" class="bank-block"></section>
-
-  <div class="main-grid">
-
-    <!-- ── Left column: calendar + habits ────────── -->
-    <div class="left-col">
-      <section class="panel">
-        <div class="cal-header">
-          <button class="cal-btn" id="cal-prev">‹</button>
-          <span class="cal-title" id="cal-title"></span>
-          <button class="cal-btn" id="cal-next">›</button>
-        </div>
-        <div class="cal-grid" id="cal-grid"></div>
-        <div id="day-panel"></div>
-      </section>
-
-      <!-- ── Habits ──────────────────────────────── -->
-      <section id="habits-block" class="habits-block"></section>
+    <!-- ── Add form ──────────────────────────────── -->
+    <div class="add-wrap">
+      <div id="add-form" class="add-form-panel">
+        <input type="text" id="f-task" class="f-text" placeholder="＋ Новая задача…">
+        <select id="f-quadrant" class="f-select">
+          <option value="A">A · важно и срочно</option>
+          <option value="B">B · важно, не срочно</option>
+          <option value="C">C · срочно, не важно</option>
+          <option value="D">D · не срочно, не важно</option>
+          <option value="Встреча">Встреча</option>
+        </select>
+        <select id="f-size" class="f-select">
+          <option value="S">S</option>
+          <option value="M" selected>M</option>
+          <option value="L">L</option>
+        </select>
+        <input type="date" id="f-when" class="f-date">
+        <button id="f-submit" class="btn-primary">Добавить</button>
+      </div>
     </div>
 
-    <!-- ── Backlog ────────────────────────────────── -->
-    <section class="panel backlog-panel">
-      <div id="backlog"><div class="loading-state">Загрузка…</div></div>
+    <!-- ── Today ─────────────────────────────────── -->
+    <section class="today-block">
+      <div class="today-header">
+        <span class="today-title">Сегодня</span>
+        <div id="traffic-light" class="traffic-light"></div>
+        <span id="tl-hours" class="tl-hours"></span>
+      </div>
+      <div id="warn-text"></div>
+      <div id="today-tasks"></div>
     </section>
 
-  </div>
+    <!-- ── Bank ──────────────────────────────────── -->
+    <section id="bank-block" class="bank-block"></section>
+
+    <div class="main-grid">
+
+      <!-- ── Left column: calendar ─────────────── -->
+      <div class="left-col">
+        <section class="panel">
+          <div class="cal-header">
+            <button class="cal-btn" id="cal-prev">‹</button>
+            <span class="cal-title" id="cal-title"></span>
+            <button class="cal-btn" id="cal-next">›</button>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
+          <div id="day-panel"></div>
+        </section>
+      </div>
+
+      <!-- ── Backlog ────────────────────────────── -->
+      <section class="panel backlog-panel">
+        <div id="backlog"><div class="loading-state">Загрузка…</div></div>
+      </section>
+
+    </div>
+  </div><!-- /#pane-tasks -->
+
+  <!-- ══ Pane: Привычки ══════════════════════════ -->
+  <div id="pane-habits" class="hidden">
+
+    <!-- Компактная листалка месяца -->
+    <div class="month-nav">
+      <button class="cal-btn" id="mn-prev">‹</button>
+      <span class="month-nav-title" id="mn-title"></span>
+      <button class="cal-btn" id="mn-next">›</button>
+    </div>
+
+    <!-- Блок привычек -->
+    <section id="habits-block" class="habits-block"></section>
+
+  </div><!-- /#pane-habits -->
+
 </div>
 
 <script>
@@ -1640,24 +1716,41 @@ async function handleAddTask() {
   }
 }
 
-// ── Events ─────────────────────────────────────────────────
-document.getElementById('cal-prev').addEventListener('click', () => {
-  state.month--;
-  if (state.month < 0) { state.month = 11; state.year--; }
+// ── Month navigation ───────────────────────────────────────
+function changeMonth(delta) {
+  state.month += delta;
+  if (state.month < 0)  { state.month = 11; state.year--; }
+  if (state.month > 11) { state.month = 0;  state.year++; }
   state.selectedDay = null;
   renderCalendar();
+  renderMonthNav();
   document.getElementById('day-panel').innerHTML = '';
-  fetchHabits(shownMonthStr());   // привычки за тот же месяц
-});
+  fetchHabits(shownMonthStr());
+}
 
-document.getElementById('cal-next').addEventListener('click', () => {
-  state.month++;
-  if (state.month > 11) { state.month = 0; state.year++; }
-  state.selectedDay = null;
-  renderCalendar();
-  document.getElementById('day-panel').innerHTML = '';
-  fetchHabits(shownMonthStr());   // привычки за тот же месяц
-});
+function renderMonthNav() {
+  const el = document.getElementById('mn-title');
+  if (el) el.textContent = `${MONTHS[state.month]} ${state.year}`;
+}
+
+// ── Tabs ───────────────────────────────────────────────────
+let activeTab = 'tasks';
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.getElementById('pane-tasks').classList.toggle('hidden', tab !== 'tasks');
+  document.getElementById('pane-habits').classList.toggle('hidden', tab !== 'habits');
+  document.getElementById('tab-tasks').classList.toggle('active', tab === 'tasks');
+  document.getElementById('tab-habits').classList.toggle('active', tab === 'habits');
+}
+
+// ── Events ─────────────────────────────────────────────────
+document.getElementById('cal-prev').addEventListener('click',  () => changeMonth(-1));
+document.getElementById('cal-next').addEventListener('click',  () => changeMonth(1));
+document.getElementById('mn-prev').addEventListener('click',   () => changeMonth(-1));
+document.getElementById('mn-next').addEventListener('click',   () => changeMonth(1));
+document.getElementById('tab-tasks').addEventListener('click',  () => switchTab('tasks'));
+document.getElementById('tab-habits').addEventListener('click', () => switchTab('habits'));
 
 // ── Init ───────────────────────────────────────────────────
 function buildAppleTouchIcon() {
@@ -1676,6 +1769,7 @@ function buildAppleTouchIcon() {
 
 buildAppleTouchIcon();
 initAddForm();
+renderMonthNav();
 fetchBacklog();
 fetchBank();
 fetchHabits();
