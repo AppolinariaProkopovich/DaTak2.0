@@ -91,6 +91,13 @@
       padding: 4px 0 0;
     }
 
+    .day-closed-badge {
+      font-size: 12px;
+      color: #2a9d5c;
+      font-weight: 600;
+      padding: 4px 0 0;
+    }
+
     #today-tasks {
       display: flex;
       flex-direction: column;
@@ -798,10 +805,10 @@
     <div id="add-form" class="add-form-panel">
       <input type="text" id="f-task" class="f-text" placeholder="＋ Новая задача…">
       <select id="f-quadrant" class="f-select">
-        <option value="A">A · Сначала</option>
-        <option value="B">B · Потом</option>
-        <option value="C">C</option>
-        <option value="D">D</option>
+        <option value="A">A · важно и срочно</option>
+        <option value="B">B · важно, не срочно</option>
+        <option value="C">C · срочно, не важно</option>
+        <option value="D">D · не срочно, не важно</option>
         <option value="Встреча">Встреча</option>
       </select>
       <select id="f-size" class="f-select">
@@ -866,10 +873,10 @@ const LIMITS     = { A: 1, B: 2, C: 3 };
 const HOUR_LIMIT = 6;
 
 const Q_LABELS = {
-  A: 'A · Сначала',
-  B: 'B · Потом',
-  C: 'C',
-  D: 'D',
+  A: 'A · важно и срочно',
+  B: 'B · важно, не срочно',
+  C: 'C · срочно, не важно',
+  D: 'D · не срочно, не важно',
   'Встреча': 'Встречи',
 };
 
@@ -890,6 +897,7 @@ const state = {
   bankChoosing: false,   // is the "choose reward" list expanded
   bankResult: '',        // text of the last unlocked reward (banner)
   habits: null,          // last getHabits response
+  dayClosedBonus: 0,     // bonus points if the day is fully closed (from getToday)
 };
 
 // ── API ────────────────────────────────────────────────────
@@ -902,6 +910,7 @@ async function fetchBacklog() {
     ]);
     if (bRes.ok && tRes.ok) {
       state.tasks = bRes.tasks;
+      state.dayClosedBonus = tRes.dayClosedBonus || 0;
       // Карточки «Сегодня» строим из getToday; полные поля (дата/неприятная)
       // подтягиваем из бэклога по id (там та же задача со статусом «открыта»).
       state.todayTasks = tRes.tasks.map(tt => {
@@ -1041,14 +1050,17 @@ function renderToday() {
 
   // Warning
   const warnEl = document.getElementById('warn-text');
+  let warnHtml = '';
   if (lim.exceeded) {
     const msgs = [];
     if (lim.overA || lim.overB || lim.overC) msgs.push('превышен лимит по типам задач');
     if (lim.overH) msgs.push('превышен лимит по часам');
-    warnEl.innerHTML = `<div class="warn-banner">⚠ ${msgs.join(' · ')}</div>`;
-  } else {
-    warnEl.innerHTML = '';
+    warnHtml += `<div class="warn-banner">⚠ ${msgs.join(' · ')}</div>`;
   }
+  if (state.dayClosedBonus > 0) {
+    warnHtml += `<div class="day-closed-badge">✅ день закрыт +${state.dayClosedBonus}</div>`;
+  }
+  warnEl.innerHTML = warnHtml;
 
   // Task cards
   const el = document.getElementById('today-tasks');
