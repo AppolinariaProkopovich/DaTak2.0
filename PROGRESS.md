@@ -46,5 +46,7 @@
 
 - 2026-06-30: Раскладка привычек изменена на календарные блоки. Каждая привычка — карточка (`background: var(--bg)`, border, border-radius: 8px) с заголовком и сеткой дней `display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px` — день 1 всегда первым, без выравнивания по дням недели. Карточки расположены по `repeat(auto-fit, minmax(340px, 1fr))` — два блока в ряд на широком экране, один на узком. Горизонтальный скролл `.habit-cols` убран. Ячейки `aspect-ratio: 1` (квадратные, размер от грида). `position: sticky` с заголовка убран. Логика toggleHabit, классы filled/is-today, смена месяца — не тронуты.
 
+- 2026-06-30: Календарь — время встреч и короткие названия дел прямо в ячейках. `renderCalendar()` строит `dayItems` (meetings с полем `time = task.date.slice(11,16)`, tasks). В каждой ячейке: под числом `.cal-meeting-time` (фиолетовый, 9px) — время ранних встреч через запятую (desktop + mobile); `.cal-cell-items` — до 3 строк `.cal-item` (встречи «14:30 Врач», задачи по имени) + `.cal-item-more` «+N» при переполнении, overflow:hidden/ellipsis/nowrap. На мобильном (@media max-width: 660px): `.left-col` order:-1 → календарь идёт первым на вкладке «Задачи»; `.cal-meeting-time` скрыт (дублируется в items); ячейки min-height:62px; `.cal-cell-items` display:block. Кольца-индикаторы, клик по дню (renderDayPanel), выбор/подсветка is-today/is-selected, листание месяцев — не тронуты. Названия экранированы через esc().
+
 ## TODO
 - Бонус +30 баллов за все закрытые задачи дня — фронт готов (читает dayClosedBonus из getToday); бэкенд ещё не реализован
