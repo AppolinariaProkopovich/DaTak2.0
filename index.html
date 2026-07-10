@@ -1095,6 +1095,12 @@ function taskDate(task) {
   return task.date ? task.date.slice(0, 10) : null;
 }
 
+function meetingTime(task) {
+  // returns 'HH:mm' for meetings with a time in task.date, else ''
+  if (task.quadrant !== 'Встреча' || !task.date || task.date.length <= 10) return '';
+  return task.date.slice(11, 16);
+}
+
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -1455,10 +1461,13 @@ function renderDayPanel() {
 
   const body = items.length === 0
     ? '<div class="today-empty" style="padding:6px 0">Нет задач</div>'
-    : items.map(t => `<div class="day-task-row">
+    : items.map(t => {
+        const mt = meetingTime(t);
+        return `<div class="day-task-row">
         <span class="q-dot ${dotCls(t.quadrant)}"></span>
-        <span>${esc(t.task)}</span>
-      </div>`).join('');
+        <span>${mt ? `${mt} ${esc(t.task)}` : esc(t.task)}</span>
+      </div>`;
+      }).join('');
 
   panel.innerHTML = `<div class="day-panel">
     <div class="day-panel-title">${formatDate(ds)}</div>
@@ -1545,7 +1554,10 @@ function renderTaskRow(task, q) {
   if (task.size)                      meta.push(task.size);
   if (task.points && q !== 'Встреча') meta.push(`${task.points} pts`);
   if (stCount > 0)                    meta.push(`${stCount} шагов`);
-  if (task.date)                      meta.push(task.date.slice(0, 10));
+  if (task.date) {
+    const mt = meetingTime(task);
+    meta.push(mt ? `${task.date.slice(0, 10)} ${mt}` : task.date.slice(0, 10));
+  }
 
   const addBtn = q !== 'D'
     ? `<button class="btn-add" data-id="${task.id}">→ сегодня</button>`
