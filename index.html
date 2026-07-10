@@ -329,17 +329,73 @@
 
     .cal-item-full {
       font-size: 11px;
-      color: var(--text);
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
       line-height: 1.5;
     }
 
+    .cal-item-full--meeting { color: var(--q-v); }    /* встречи — фиолетовым, как .cal-ring-meeting */
+    .cal-item-full--task    { color: var(--accent); } /* дедлайны/задачи — синим, как .cal-ring-task */
+
     .cal-item-more-full {
       font-size: 11px;
       color: var(--muted);
       line-height: 1.5;
+    }
+
+    /* Десктоп: обычные block-контейнеры, поворота нет. */
+    .cal-full-rotate-wrap  { width: 100%; }
+    .cal-full-rotate-inner { width: 100%; }
+
+    @media (max-width: 660px) {
+      /* Большой календарь на мобильном повёрнут через transform: rotate(-90deg)
+         (против часовой стрелки), чтобы 7 колонок месяца растянулись вдоль
+         длинной стороны экрана (высоты вьюпорта), а не тесной ширины экрана.
+         Чтобы прочитать календарь, ПОВЕРНИТЕ ТЕЛЕФОН ПО ЧАСОВОЙ СТРЕЛКЕ на 90°
+         (верхний край телефона уходит вправо) — это компенсирует поворот.
+
+         .cal-full-rotate-wrap — резервирует место в потоке страницы под уже
+         повёрнутый (визуальный) прямоугольник: ширина/высота обменяны местами
+         относительно .cal-full-rotate-inner, чтобы блок не наезжал на соседей.
+         .cal-full-rotate-inner — сам поворачиваемый блок, до поворота ширина
+         больше (уходит в высоту экрана), высота — меньше (умещается в ширину
+         экрана); transform-origin: center, чтобы вращение шло вокруг центра. */
+      .cal-full-panel { padding: 8px 10px; }
+
+      .cal-full-rotate-wrap {
+        position: relative;
+        width: 92vw;
+        height: 78vh;
+        margin: 8px auto 0;
+        overflow: hidden;
+      }
+
+      .cal-full-rotate-inner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 78vh;
+        height: 92vw;
+        transform: translate(-50%, -50%) rotate(-90deg);
+        transform-origin: center center;
+      }
+
+      .cal-full-rotate-inner .cal-grid-full {
+        height: 100%;
+        grid-auto-rows: 1fr;
+      }
+
+      .cal-full-rotate-inner .cal-cell-full {
+        min-height: 0;
+        padding: 3px 4px;
+        font-size: 10px;
+        overflow: hidden;
+      }
+
+      .cal-full-rotate-inner .cal-num-full  { font-size: 11px; margin-bottom: 2px; }
+      .cal-full-rotate-inner .cal-item-full,
+      .cal-full-rotate-inner .cal-item-more-full { font-size: 8px; line-height: 1.25; }
     }
 
     .day-panel {
@@ -958,13 +1014,19 @@
 
   <!-- ══ Pane: Календарь ═════════════════════════ -->
   <div id="pane-calendar" class="hidden">
-    <section class="panel">
+    <section class="panel cal-full-panel">
       <div class="cal-header">
         <button class="cal-btn" id="cal-full-prev">‹</button>
         <span class="cal-title" id="cal-full-title"></span>
         <button class="cal-btn" id="cal-full-next">›</button>
       </div>
-      <div class="cal-grid-full" id="cal-grid-full"></div>
+      <!-- На мобильном .cal-full-rotate-wrap/-inner поворачивают сетку на 90°;
+           на десктопе это обычные block-контейнеры без эффекта. -->
+      <div class="cal-full-rotate-wrap">
+        <div class="cal-full-rotate-inner">
+          <div class="cal-grid-full" id="cal-grid-full"></div>
+        </div>
+      </div>
     </section>
   </div><!-- /#pane-calendar -->
 
@@ -1479,13 +1541,13 @@ function renderFullGrid(y, m, dayItems) {
     let itemsHtml = '';
     if (its) {
       const all = [
-        ...its.meetings.map(mt => mt.time ? `${mt.time} ${mt.name}` : mt.name),
-        ...its.tasks.map(tk => tk.name),
+        ...its.meetings.map(mt => ({ kind: 'meeting', label: mt.time ? `${mt.time} ${mt.name}` : mt.name })),
+        ...its.tasks.map(tk => ({ kind: 'task', label: tk.name })),
       ];
       const MAX   = 3;
       const shown = all.slice(0, MAX);
       const rest  = all.length - shown.length;
-      itemsHtml = shown.map(lbl => `<div class="cal-item-full">${esc(lbl)}</div>`).join('')
+      itemsHtml = shown.map(it => `<div class="cal-item-full cal-item-full--${it.kind}">${esc(it.label)}</div>`).join('')
         + (rest > 0 ? `<div class="cal-item-more-full">+${rest}</div>` : '');
     }
 
