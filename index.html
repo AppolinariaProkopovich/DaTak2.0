@@ -735,7 +735,9 @@
       flex-shrink: 0;
     }
 
-    .btn-pencil {
+    .btn-pencil,
+    .btn-task-edit,
+    .btn-task-delete {
       background: none;
       border: none;
       cursor: pointer;
@@ -747,7 +749,10 @@
       opacity: 0.55;
     }
 
-    .btn-pencil:hover { opacity: 1; color: var(--accent); background: var(--bg); }
+    .btn-pencil:hover,
+    .btn-task-edit:hover { opacity: 1; color: var(--accent); background: var(--bg); }
+
+    .btn-task-delete:hover { opacity: 1; color: var(--danger); background: #fde8e6; }
 
     .date-edit-form {
       display: flex;
@@ -759,6 +764,24 @@
     .date-edit-cancel {
       padding: 3px 8px;
       font-size: 12px;
+    }
+
+    /* ── Task edit ───────────────────────────────── */
+    .task-edit-name { width: 100%; margin-bottom: 8px; }
+
+    .task-edit-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .task-edit-row .f-select { flex: 1; }
+
+    .task-edit-hint {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin: 4px 0;
     }
 
     /* ── Bank ────────────────────────────────────── */
@@ -1125,6 +1148,15 @@ const Q_LABELS = {
   'Встреча': 'Встречи',
 };
 
+// Те же варианты и подписи, что в select#f-quadrant формы добавления задачи.
+const QUADRANT_OPTIONS = [
+  ['A', 'A · важно и срочно'],
+  ['B', 'B · важно, не срочно'],
+  ['C', 'C · срочно, не важно'],
+  ['D', 'D · не срочно, не важно'],
+  ['Встреча', 'Встреча'],
+];
+
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь',
                 'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const DOWS   = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
@@ -1138,6 +1170,7 @@ const state = {
   selectedDay: null,     // 'yyyy-MM-dd'
   formTaskId: null,      // task.id with open inline subtask form
   editingDateId: null,   // task.id with open date-edit input
+  editingTaskId: null,   // task.id with open task-edit form (name/quadrant/size/steps)
   bank: null,            // last getBank response
   bankChoosing: false,   // is the "choose reward" list expanded
   bankResult: '',        // text of the last unlocked reward (banner)
@@ -1694,6 +1727,7 @@ function renderBacklog() {
   el.querySelectorAll('.btn-pencil').forEach(btn => {
     btn.addEventListener('click', () => {
       state.editingDateId = state.editingDateId === btn.dataset.id ? null : btn.dataset.id;
+      state.editingTaskId = null;
       renderBacklog();
     });
   });
@@ -1710,6 +1744,31 @@ function renderBacklog() {
   el.querySelectorAll('.date-edit-cancel').forEach(btn => {
     btn.addEventListener('click', () => {
       state.editingDateId = null;
+      renderBacklog();
+    });
+  });
+
+  el.querySelectorAll('.btn-task-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      state.editingTaskId = state.editingTaskId === id ? null : id;
+      state.editingDateId = null;
+      state.formTaskId    = null;
+      renderBacklog();
+    });
+  });
+
+  el.querySelectorAll('.btn-task-delete').forEach(btn => {
+    btn.addEventListener('click', () => handleDeleteTask(btn.dataset.id));
+  });
+
+  el.querySelectorAll('.task-edit-save').forEach(btn => {
+    btn.addEventListener('click', () => handleSaveTaskEdit(btn));
+  });
+
+  el.querySelectorAll('.task-edit-cancel').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.editingTaskId = null;
       renderBacklog();
     });
   });
@@ -1750,10 +1809,13 @@ function renderTaskRow(task, q) {
     ? `<button class="btn-add" data-id="${task.id}">→ сегодня</button>`
     : '';
 
-  const formHtml     = state.formTaskId === task.id   ? renderSubtaskForm(task)  : '';
+  const formHtml     = state.formTaskId === task.id    ? renderSubtaskForm(task)   : '';
   const dateFormHtml = state.editingDateId === task.id ? renderDateEditForm(task) : '';
+  const editFormHtml = state.editingTaskId === task.id ? renderTaskEditForm(task) : '';
 
   const pencilBtn = `<button class="btn-pencil" data-id="${esc(task.id)}" title="Изменить дату">✎</button>`;
+  const editBtn   = `<button class="btn-task-edit" data-id="${esc(task.id)}" title="Изменить задачу">✏️</button>`;
+  const deleteBtn = `<button class="btn-task-delete" data-id="${esc(task.id)}" title="Удалить задачу">🗑</button>`;
 
   return `<div class="task-row${urgent ? ' task-row--urgent' : ''}">
     <span class="q-dot ${dotCls(q)}"></span>
@@ -1762,8 +1824,9 @@ function renderTaskRow(task, q) {
       ${meta.length ? `<div class="task-row-meta">${meta.join(' · ')}</div>` : ''}
       ${formHtml}
       ${dateFormHtml}
+      ${editFormHtml}
     </div>
-    <div class="task-actions">${pencilBtn}${addBtn}</div>
+    <div class="task-actions">${pencilBtn}${editBtn}${deleteBtn}${addBtn}</div>
   </div>`;
 }
 
@@ -1795,6 +1858,33 @@ function renderDateEditForm(task) {
   </div>`;
 }
 
+function renderTaskEditForm(task) {
+  const prefillSteps = task.subtasks
+    ? parseSubtasks(task.subtasks).map(s => s.text).join('\n')
+    : '';
+  const quadrantOptions = QUADRANT_OPTIONS.map(([val, label]) =>
+    `<option value="${val}"${task.quadrant === val ? ' selected' : ''}>${esc(label)}</option>`
+  ).join('');
+  const sizeOptions = ['S', 'M', 'L'].map(s =>
+    `<option value="${s}"${task.size === s ? ' selected' : ''}>${s}</option>`
+  ).join('');
+
+  return `<div class="subtask-form task-edit-form">
+    <input type="text" class="f-text task-edit-name" value="${esc(task.task)}">
+    <div class="task-edit-row">
+      <select class="f-select task-edit-quadrant">${quadrantOptions}</select>
+      <select class="f-select task-edit-size">${sizeOptions}</select>
+    </div>
+    <span class="subtask-form-label">Шаги (каждый шаг — новая строка):</span>
+    <textarea class="task-edit-steps" placeholder="Шаг 1&#10;Шаг 2&#10;Шаг 3">${esc(prefillSteps)}</textarea>
+    <span class="task-edit-hint">Отметки о выполнении сохранятся у шагов с тем же текстом; изменённые или новые шаги начнутся заново.</span>
+    <div class="form-actions">
+      <button class="btn-primary task-edit-save" data-id="${esc(task.id)}">Сохранить</button>
+      <button class="btn-secondary task-edit-cancel" data-id="${esc(task.id)}">Отмена</button>
+    </div>
+  </div>`;
+}
+
 // ── Handlers ───────────────────────────────────────────────
 function handleAddToToday(taskId) {
   const task = state.tasks.find(t => t.id === taskId);
@@ -1804,6 +1894,7 @@ function handleAddToToday(taskId) {
   if (state.formTaskId && state.formTaskId !== taskId) {
     state.formTaskId = null;
   }
+  state.editingTaskId = null;
 
   // Meetings always go straight in, regardless of size
   if (task.quadrant === 'Встреча' || task.size === 'S') {
@@ -1864,6 +1955,59 @@ async function handleUpdateDate(taskId, dateValue, isMeeting) {
   } catch(e) {
     console.error('[updateDate] ошибка:', e);
     alert('Ошибка при изменении даты');
+  }
+}
+
+async function handleSaveTaskEdit(btn) {
+  const id   = btn.dataset.id;
+  const form = btn.closest('.task-edit-form');
+  const task = state.tasks.find(t => t.id === id);
+  if (!form || !task) return;
+
+  const nameEl     = form.querySelector('.task-edit-name');
+  const quadrantEl = form.querySelector('.task-edit-quadrant');
+  const sizeEl     = form.querySelector('.task-edit-size');
+  const stepsEl    = form.querySelector('.task-edit-steps');
+
+  const taskText = nameEl.value.trim();
+  if (!taskText) { nameEl.style.borderColor = 'var(--danger)'; return; }
+
+  // Сохраняем отметки выполнения для шагов, чей текст не изменился (формат шаг:0|шаг:1).
+  const original = task.subtasks ? parseSubtasks(task.subtasks) : [];
+  const lines    = stepsEl.value.split('\n').map(l => l.trim()).filter(Boolean);
+  const subtasks = lines.map(line => {
+    const match = original.find(s => s.text === line);
+    return `${line}:${match && match.done ? '1' : '0'}`;
+  }).join('|');
+
+  btn.disabled = true;
+  try {
+    await apiPost({
+      action:   'editTask',
+      id,
+      task:     taskText,
+      quadrant: quadrantEl.value,
+      size:     sizeEl.value,
+      subtasks,
+    });
+    state.editingTaskId = null;
+    await fetchBacklog();
+  } catch {
+    btn.disabled = false;
+    alert('Ошибка сохранения задачи');
+  }
+}
+
+async function handleDeleteTask(id) {
+  if (!confirm('Удалить задачу?')) return;
+  try {
+    await apiPost({ action: 'deleteTask', id });
+    if (state.editingTaskId === id) state.editingTaskId = null;
+    if (state.editingDateId === id) state.editingDateId = null;
+    if (state.formTaskId    === id) state.formTaskId    = null;
+    await fetchBacklog();
+  } catch {
+    alert('Ошибка при удалении задачи');
   }
 }
 
