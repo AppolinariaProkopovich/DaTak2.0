@@ -939,14 +939,18 @@
       color: #fff;
     }
 
-    .habit-cell.is-today {
+    .habit-cell.clickable {
       cursor: pointer;
+    }
+
+    .habit-cell.clickable:active { transform: scale(0.92); }
+
+    .habit-cell.is-today {
       border: 2px solid var(--accent);
       font-weight: 700;
     }
 
     .habit-cell.is-today:not(.filled) { color: var(--accent); }
-    .habit-cell.is-today:active { transform: scale(0.92); }
 
     /* ── Tabs ────────────────────────────────────── */
     .hidden { display: none !important; }
@@ -1492,14 +1496,18 @@ function renderHabits() {
     const done = new Set(hab.daysThisMonth || []);
     let cells = '';
     for (let d = 1; d <= nDays; d++) {
-      const ds      = `${monthStr}-${pad(d)}`;
-      const filled  = done.has(ds);
-      const isToday = ds === today;        // совпадёт только в реальном текущем месяце
+      const ds        = `${monthStr}-${pad(d)}`;
+      const filled    = done.has(ds);
+      const isToday   = ds === today;        // совпадёт только в реальном текущем месяце
+      // Прошлые дни и сегодня кликабельны (сравнение строк 'YYYY-MM-DD' работает
+      // как сравнение дат); будущие — только просмотр.
+      const clickable = ds <= today;
       const cls = ['habit-cell',
-        filled  ? 'filled'   : '',
-        isToday ? 'is-today' : '',
+        filled    ? 'filled'    : '',
+        isToday   ? 'is-today'  : '',
+        clickable ? 'clickable' : '',
       ].filter(Boolean).join(' ');
-      const dataAttr = isToday ? ` data-habit="${esc(hab.name)}"` : '';
+      const dataAttr = clickable ? ` data-habit="${esc(hab.name)}" data-day="${ds}"` : '';
       cells += `<div class="${cls}"${dataAttr}>${d}</div>`;
     }
     const pts = hab.points ? `<span class="habit-pts">+${hab.points}</span>` : '';
@@ -1514,16 +1522,18 @@ function renderHabits() {
 
   el.innerHTML = `<div class="habits-title">📆 Привычки</div><div class="habit-cols">${cols}</div>`;
 
-  // Кликабельны только клетки «сегодня» (есть лишь в реальном текущем месяце).
-  el.querySelectorAll('.habit-cell.is-today').forEach(cell => {
-    cell.addEventListener('click', () => handleToggleHabit(cell.dataset.habit));
+  // Кликабельны прошлые дни и сегодня; будущие — только просмотр (см. clickable выше).
+  el.querySelectorAll('.habit-cell.clickable').forEach(cell => {
+    cell.addEventListener('click', () => handleToggleHabit(cell.dataset.habit, cell.dataset.day));
   });
 }
 
-async function handleToggleHabit(name) {
+async function handleToggleHabit(name, day) {
   if (!name) return;
   try {
-    await apiPost({ action: 'toggleHabit', habit: name });
+    const payload = { action: 'toggleHabit', habit: name };
+    if (day) payload.day = day;
+    await apiPost(payload);
     await fetchHabits(shownMonthStr());        // перечитать показанный месяц
     if (typeof fetchBank === 'function') fetchBank();   // привычки влияют на кошелёк
   } catch {
