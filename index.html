@@ -727,7 +727,7 @@
       padding: 40px;
     }
 
-    /* ── Date edit ───────────────────────────────── */
+    /* ── Task actions ────────────────────────────── */
     .task-actions {
       display: flex;
       align-items: center;
@@ -735,7 +735,6 @@
       flex-shrink: 0;
     }
 
-    .btn-pencil,
     .btn-task-edit,
     .btn-task-delete {
       background: none;
@@ -749,28 +748,16 @@
       opacity: 0.55;
     }
 
-    .btn-pencil:hover,
     .btn-task-edit:hover { opacity: 1; color: var(--accent); background: var(--bg); }
 
     .btn-task-delete:hover { opacity: 1; color: var(--danger); background: #fde8e6; }
-
-    .date-edit-form {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 6px;
-    }
-
-    .date-edit-cancel {
-      padding: 3px 8px;
-      font-size: 12px;
-    }
 
     /* ── Task edit ───────────────────────────────── */
     .task-edit-name { width: 100%; margin-bottom: 8px; }
 
     .task-edit-row {
       display: flex;
+      flex-wrap: wrap;
       gap: 6px;
       margin-bottom: 8px;
     }
@@ -1169,8 +1156,7 @@ const state = {
   month:      new Date().getMonth(),   // 0-indexed
   selectedDay: null,     // 'yyyy-MM-dd'
   formTaskId: null,      // task.id with open inline subtask form
-  editingDateId: null,   // task.id with open date-edit input
-  editingTaskId: null,   // task.id with open task-edit form (name/quadrant/size/steps)
+  editingTaskId: null,   // task.id with open task-edit form (name/quadrant/size/date/steps)
   bank: null,            // last getBank response
   bankChoosing: false,   // is the "choose reward" list expanded
   bankResult: '',        // text of the last unlocked reward (banner)
@@ -1724,35 +1710,10 @@ function renderBacklog() {
     btn.addEventListener('click', () => handleAddToToday(btn.dataset.id));
   });
 
-  el.querySelectorAll('.btn-pencil').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.editingDateId = state.editingDateId === btn.dataset.id ? null : btn.dataset.id;
-      state.editingTaskId = null;
-      renderBacklog();
-    });
-  });
-
-  el.querySelectorAll('.date-edit-save').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id;
-      const isMeeting = btn.dataset.meeting === 'true';
-      const inp = el.querySelector(`.date-edit-input[data-id="${CSS.escape(id)}"]`);
-      if (inp) handleUpdateDate(id, inp.value, isMeeting);
-    });
-  });
-
-  el.querySelectorAll('.date-edit-cancel').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.editingDateId = null;
-      renderBacklog();
-    });
-  });
-
   el.querySelectorAll('.btn-task-edit').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.id;
       state.editingTaskId = state.editingTaskId === id ? null : id;
-      state.editingDateId = null;
       state.formTaskId    = null;
       renderBacklog();
     });
@@ -1770,6 +1731,23 @@ function renderBacklog() {
     btn.addEventListener('click', () => {
       state.editingTaskId = null;
       renderBacklog();
+    });
+  });
+
+  // Тип поля даты подстраивается под выбранную в форме важность:
+  // «Встреча» → datetime-local, иначе — date (см. taskEditDateField).
+  el.querySelectorAll('.task-edit-quadrant').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const form = sel.closest('.task-edit-form');
+      const dateInput = form && form.querySelector('.task-edit-date');
+      if (!dateInput) return;
+      const isMeeting = sel.value === 'Встреча';
+      const newType    = isMeeting ? 'datetime-local' : 'date';
+      if (dateInput.type === newType) return;
+      let v = dateInput.value;
+      if (v) v = isMeeting ? `${v}T00:00` : v.slice(0, 10);
+      dateInput.type  = newType;
+      dateInput.value = v;
     });
   });
 
@@ -1810,10 +1788,8 @@ function renderTaskRow(task, q) {
     : '';
 
   const formHtml     = state.formTaskId === task.id    ? renderSubtaskForm(task)   : '';
-  const dateFormHtml = state.editingDateId === task.id ? renderDateEditForm(task) : '';
   const editFormHtml = state.editingTaskId === task.id ? renderTaskEditForm(task) : '';
 
-  const pencilBtn = `<button class="btn-pencil" data-id="${esc(task.id)}" title="Изменить дату">✎</button>`;
   const editBtn   = `<button class="btn-task-edit" data-id="${esc(task.id)}" title="Изменить задачу">✏️</button>`;
   const deleteBtn = `<button class="btn-task-delete" data-id="${esc(task.id)}" title="Удалить задачу">🗑</button>`;
 
@@ -1823,10 +1799,9 @@ function renderTaskRow(task, q) {
       <div class="task-name">${esc(task.task)}${task.nasty ? '<em class="nasty">!</em>' : ''}</div>
       ${meta.length ? `<div class="task-row-meta">${meta.join(' · ')}</div>` : ''}
       ${formHtml}
-      ${dateFormHtml}
       ${editFormHtml}
     </div>
-    <div class="task-actions">${pencilBtn}${editBtn}${deleteBtn}${addBtn}</div>
+    <div class="task-actions">${editBtn}${deleteBtn}${addBtn}</div>
   </div>`;
 }
 
@@ -1844,18 +1819,15 @@ function renderSubtaskForm(task) {
   </div>`;
 }
 
-function renderDateEditForm(task) {
-  const isMeeting = task.quadrant === 'Встреча';
+// Тип и значение поля даты зависят от важности задачи (формат — как в бывшей
+// renderDateEditForm): встреча → datetime-local, иначе — обычная date.
+function taskEditDateField(quadrant, date) {
+  const isMeeting = quadrant === 'Встреча';
   const inputType = isMeeting ? 'datetime-local' : 'date';
-  const val = task.date
-    ? (isMeeting ? task.date.slice(0, 16).replace(' ', 'T') : task.date.slice(0, 10))
+  const val = date
+    ? (isMeeting ? date.slice(0, 16).replace(' ', 'T') : date.slice(0, 10))
     : '';
-  return `<div class="date-edit-form">
-    <input type="${inputType}" class="f-date date-edit-input" value="${esc(val)}"
-           data-id="${esc(task.id)}" data-meeting="${isMeeting}">
-    <button class="btn-primary date-edit-save" data-id="${esc(task.id)}" data-meeting="${isMeeting}">Сохранить</button>
-    <button class="btn-secondary date-edit-cancel" data-id="${esc(task.id)}">✕</button>
-  </div>`;
+  return { inputType, val };
 }
 
 function renderTaskEditForm(task) {
@@ -1868,12 +1840,14 @@ function renderTaskEditForm(task) {
   const sizeOptions = ['S', 'M', 'L'].map(s =>
     `<option value="${s}"${task.size === s ? ' selected' : ''}>${s}</option>`
   ).join('');
+  const { inputType: dateType, val: dateVal } = taskEditDateField(task.quadrant, task.date);
 
   return `<div class="subtask-form task-edit-form">
     <input type="text" class="f-text task-edit-name" value="${esc(task.task)}">
     <div class="task-edit-row">
       <select class="f-select task-edit-quadrant">${quadrantOptions}</select>
       <select class="f-select task-edit-size">${sizeOptions}</select>
+      <input type="${dateType}" class="f-date task-edit-date" value="${esc(dateVal)}">
     </div>
     <span class="subtask-form-label">Шаги (каждый шаг — новая строка):</span>
     <textarea class="task-edit-steps" placeholder="Шаг 1&#10;Шаг 2&#10;Шаг 3">${esc(prefillSteps)}</textarea>
@@ -1942,22 +1916,6 @@ async function sessionToToday(task) {
   }
 }
 
-async function handleUpdateDate(taskId, dateValue, isMeeting) {
-  if (!dateValue) { console.warn('[updateDate] пустое значение даты, запрос не отправлен'); return; }
-  const date = isMeeting ? dateValue.replace('T', ' ') : dateValue;
-  const payload = { action: 'updateDate', id: taskId, date };
-  console.log('[updateDate] → POST', API_URL, payload);
-  try {
-    const result = await apiPost(payload);
-    console.log('[updateDate] ← ответ:', result);
-    state.editingDateId = null;
-    await fetchBacklog();
-  } catch(e) {
-    console.error('[updateDate] ошибка:', e);
-    alert('Ошибка при изменении даты');
-  }
-}
-
 async function handleSaveTaskEdit(btn) {
   const id   = btn.dataset.id;
   const form = btn.closest('.task-edit-form');
@@ -1967,10 +1925,16 @@ async function handleSaveTaskEdit(btn) {
   const nameEl     = form.querySelector('.task-edit-name');
   const quadrantEl = form.querySelector('.task-edit-quadrant');
   const sizeEl     = form.querySelector('.task-edit-size');
+  const dateEl     = form.querySelector('.task-edit-date');
   const stepsEl    = form.querySelector('.task-edit-steps');
 
   const taskText = nameEl.value.trim();
   if (!taskText) { nameEl.style.borderColor = 'var(--danger)'; return; }
+
+  // Дата приходит в формате поля (datetime-local для встреч, date для остальных);
+  // приводим к формату бэка: 'YYYY-MM-DD HH:mm' / 'YYYY-MM-DD' / '' (очистить).
+  const isMeeting = quadrantEl.value === 'Встреча';
+  const date = dateEl.value ? (isMeeting ? dateEl.value.replace('T', ' ') : dateEl.value) : '';
 
   // Сохраняем отметки выполнения для шагов, чей текст не изменился (формат шаг:0|шаг:1).
   const original = task.subtasks ? parseSubtasks(task.subtasks) : [];
@@ -1989,6 +1953,7 @@ async function handleSaveTaskEdit(btn) {
       quadrant: quadrantEl.value,
       size:     sizeEl.value,
       subtasks,
+      date,
     });
     state.editingTaskId = null;
     await fetchBacklog();
@@ -2003,7 +1968,6 @@ async function handleDeleteTask(id) {
   try {
     await apiPost({ action: 'deleteTask', id });
     if (state.editingTaskId === id) state.editingTaskId = null;
-    if (state.editingDateId === id) state.editingDateId = null;
     if (state.formTaskId    === id) state.formTaskId    = null;
     await fetchBacklog();
   } catch {
