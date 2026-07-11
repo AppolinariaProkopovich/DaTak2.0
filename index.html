@@ -350,6 +350,8 @@
     /* Десктоп: обычные block-контейнеры, поворота нет. */
     .cal-full-rotate-wrap  { width: 100%; }
     .cal-full-rotate-inner { width: 100%; }
+    .day-panel-rotate-wrap  { width: 100%; }
+    .day-panel-rotate-inner { width: 100%; }
 
     @media (max-width: 660px) {
       /* Большой календарь на мобильном повёрнут через transform: rotate(90deg)
@@ -386,6 +388,15 @@
 
       .cal-full-rotate-inner .cal-grid-full {
         height: 100%;
+        /* Строка подписей дней недели (первая строка грида) должна быть по
+           размеру своего содержимого, а не растягиваться на равную долю
+           высоты наравне с неделями — иначе grid-auto-rows: 1fr отдаёт ей
+           столько же места, сколько строке недели, и после поворота между
+           подписями и сеткой чисел образуется широкий пустой столбец.
+           grid-template-rows задаёт только первую (явную) строку — auto;
+           остальные (недели) продолжают делить место поровну через
+           grid-auto-rows. */
+        grid-template-rows: auto;
         grid-auto-rows: 1fr;
       }
 
@@ -405,6 +416,37 @@
          gap сетки (gap общий для всех строк и его трогать нельзя — иначе
          сдвинутся и сами числа). Уменьшаем только этот padding. */
       .cal-full-rotate-inner .cal-dow { padding: 3px 0 1px; }
+
+      /* Панель подробностей дня (renderDayPanel) — та же логика поворота,
+         что и .cal-full-rotate-wrap/-inner у сетки: .day-panel-rotate-wrap
+         резервирует в потоке страницы уже повёрнутый (визуальный)
+         прямоугольник, .day-panel-rotate-inner — сам поворачиваемый блок
+         с обменянными местами шириной/высотой. Стоит в разметке СРАЗУ
+         ПОСЛЕ .cal-full-rotate-wrap, поэтому после одинакового поворота
+         обоих блоков панель оказывается дальше сетки в той же повёрнутой
+         системе координат («после» = ниже сетки при повёрнутом телефоне).
+         overflow-y: auto на inner — страховка на случай, если дел в
+         выбранный день много и они не помещаются в отведённую полосу. */
+      .day-panel-rotate-wrap {
+        position: relative;
+        width: 92vw;
+        height: 22vh;
+        margin: 10px auto 0;
+        overflow: hidden;
+      }
+
+      .day-panel-rotate-inner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 22vh;
+        height: 92vw;
+        box-sizing: border-box;
+        padding: 4px 6px;
+        overflow-y: auto;
+        transform: translate(-50%, -50%) rotate(90deg);
+        transform-origin: center center;
+      }
     }
 
     .day-panel {
@@ -1036,8 +1078,14 @@
           <div class="cal-grid-full" id="cal-grid-full"></div>
         </div>
       </div>
-      <!-- Панель дня выводится вне повёрнутого блока, чтобы текст читался как обычно. -->
-      <div id="day-panel-full"></div>
+      <!-- Панель дня повёрнута тем же 90°, что и сетка (своя пара wrap/inner),
+           и идёт следом за сеткой в потоке — на мобильном это ставит её ПОСЛЕ
+           сетки в повёрнутой системе координат. На десктопе — обычный блок. -->
+      <div class="day-panel-rotate-wrap">
+        <div class="day-panel-rotate-inner">
+          <div id="day-panel-full"></div>
+        </div>
+      </div>
     </section>
   </div><!-- /#pane-calendar -->
 
