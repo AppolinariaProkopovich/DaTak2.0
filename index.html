@@ -316,10 +316,13 @@
       padding: 6px;
       min-height: 100px;
       font-size: 13px;
+      cursor: pointer;
     }
 
-    .cal-cell-full.empty     { border-color: transparent; }
-    .cal-cell-full.is-today  { border-color: var(--accent); background: #eef4fb; }
+    .cal-cell-full:hover           { background: var(--bg); }
+    .cal-cell-full.empty           { border-color: transparent; cursor: default; }
+    .cal-cell-full.empty:hover     { background: none; }
+    .cal-cell-full.is-today        { border-color: var(--accent); background: #eef4fb; }
 
     .cal-num-full {
       display: block;
@@ -396,6 +399,12 @@
       .cal-full-rotate-inner .cal-num-full  { font-size: 11px; margin-bottom: 2px; }
       .cal-full-rotate-inner .cal-item-full,
       .cal-full-rotate-inner .cal-item-more-full { font-size: 8px; line-height: 1.25; }
+
+      /* Подписи дней недели (ПН, ВТ…) стоят в одной сетке с числами, поэтому
+         расстояние до сетки чисел — это padding-bottom самих подписей, а не
+         gap сетки (gap общий для всех строк и его трогать нельзя — иначе
+         сдвинутся и сами числа). Уменьшаем только этот padding. */
+      .cal-full-rotate-inner .cal-dow { padding: 3px 0 1px; }
     }
 
     .day-panel {
@@ -1027,6 +1036,8 @@
           <div class="cal-grid-full" id="cal-grid-full"></div>
         </div>
       </div>
+      <!-- Панель дня выводится вне повёрнутого блока, чтобы текст читался как обычно. -->
+      <div id="day-panel-full"></div>
     </section>
   </div><!-- /#pane-calendar -->
 
@@ -1522,7 +1533,16 @@ function renderCompactGrid(y, m, deadlineDates, meetingDates) {
   });
 }
 
-// Полноразмерный календарь (вкладка «Календарь») — дела и время видны без клика.
+// Обрезает название до первых ~3 слов, добавляя многоточие, если слов больше.
+// Полное название по-прежнему доступно в панели дня (renderDayPanel) по клику на день.
+function truncateWords(str, n = 3) {
+  const words = str.trim().split(/\s+/);
+  if (words.length <= n) return str;
+  return words.slice(0, n).join(' ') + '…';
+}
+
+// Полноразмерный календарь (вкладка «Календарь») — дела и время видны без клика,
+// клик/тап по дню открывает renderDayPanel с полными названиями.
 function renderFullGrid(y, m, dayItems) {
   const today = todayStr();
 
@@ -1541,8 +1561,8 @@ function renderFullGrid(y, m, dayItems) {
     let itemsHtml = '';
     if (its) {
       const all = [
-        ...its.meetings.map(mt => ({ kind: 'meeting', label: mt.time ? `${mt.time} ${mt.name}` : mt.name })),
-        ...its.tasks.map(tk => ({ kind: 'task', label: tk.name })),
+        ...its.meetings.map(mt => ({ kind: 'meeting', label: mt.time ? `${mt.time} ${truncateWords(mt.name)}` : truncateWords(mt.name) })),
+        ...its.tasks.map(tk => ({ kind: 'task', label: truncateWords(tk.name) })),
       ];
       const MAX   = 3;
       const shown = all.slice(0, MAX);
@@ -1551,16 +1571,28 @@ function renderFullGrid(y, m, dayItems) {
         + (rest > 0 ? `<div class="cal-item-more-full">+${rest}</div>` : '');
     }
 
-    html += `<div class="${cls}"><span class="cal-num-full">${d}</span>${itemsHtml}</div>`;
+    html += `<div class="${cls}" data-date="${ds}"><span class="cal-num-full">${d}</span>${itemsHtml}</div>`;
   }
 
   const grid = document.getElementById('cal-grid-full');
   grid.innerHTML = html;
+
+  grid.querySelectorAll('.cal-cell-full[data-date]').forEach(cell => {
+    cell.addEventListener('click', () => {
+      state.selectedDay = cell.dataset.date;
+      renderDayPanel();
+    });
+  });
 }
 
+// Панель дня используется и маленьким календарём (#day-panel), и большим (#day-panel-full).
 function renderDayPanel() {
-  const panel = document.getElementById('day-panel');
-  if (!state.selectedDay) { panel.innerHTML = ''; return; }
+  const panels = ['day-panel', 'day-panel-full']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  if (!panels.length) return;
+
+  if (!state.selectedDay) { panels.forEach(p => p.innerHTML = ''); return; }
 
   const ds    = state.selectedDay;
   const items = state.tasks.filter(t => taskDate(t) === ds);
@@ -1575,10 +1607,11 @@ function renderDayPanel() {
       </div>`;
       }).join('');
 
-  panel.innerHTML = `<div class="day-panel">
+  const html = `<div class="day-panel">
     <div class="day-panel-title">${formatDate(ds)}</div>
     ${body}
   </div>`;
+  panels.forEach(p => p.innerHTML = html);
 }
 
 // ── Backlog ────────────────────────────────────────────────
