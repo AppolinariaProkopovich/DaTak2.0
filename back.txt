@@ -140,6 +140,56 @@ function doPost(e) {
       return json_({ ok: false, error: 'задача не найдена' });
     }
 
+    // --- редактировать задачу ---
+    if (p.action === 'editTask') {
+      const data = t.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === p.id) {
+          const row = i + 1;
+          // название (кол.3)
+          if (p.task !== undefined && p.task !== '') {
+            t.getRange(row, 3).setValue(p.task);
+          }
+          // квадрант (кол.4)
+          const isMeeting = (p.quadrant === 'Встреча');
+          if (p.quadrant !== undefined && p.quadrant !== '') {
+            t.getRange(row, 4).setValue(isMeeting ? 'Встреча' : p.quadrant.toUpperCase());
+          }
+          // размер (кол.5)
+          let size = (data[i][4] || 'M');
+          if (p.size !== undefined && p.size !== '') {
+            size = p.size.toUpperCase();
+            t.getRange(row, 5).setValue(size);
+          }
+          // шаги (кол.8) — строка вида "шаг1:0|шаг2:1"
+          if (p.subtasks !== undefined) {
+            t.getRange(row, 8).setValue(p.subtasks);
+          }
+          // пересчёт баллов (кол.6): встреча = 0, иначе размер + «неприятная»
+          const curQuad = t.getRange(row, 4).getValue();
+          const nasty = (data[i][6] === 'да');
+          const points = (curQuad === 'Встреча')
+            ? 0
+            : (POINTS[size] || 0) + (nasty ? NASTY_BONUS : 0);
+          t.getRange(row, 6).setValue(points);
+          return json_({ ok: true, id: p.id, points: points });
+        }
+      }
+      return json_({ ok: false, error: 'задача не найдена' });
+    }
+
+    // --- удалить задачу (жёстко) ---
+    if (p.action === 'deleteTask') {
+      const data = t.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === p.id) {
+          t.deleteRow(i + 1);
+          return json_({ ok: true, id: p.id });
+        }
+      }
+      return json_({ ok: false, error: 'задача не найдена' });
+    }
+
     // --- вернуть задачу из выполненных ---
     if (p.action === 'reopenTask') {
       const data = t.getDataRange().getValues();
@@ -372,7 +422,7 @@ if (action === 'getBank') {
     });
   }
   out.sort((a, b) => w[a.quadrant] - w[b.quadrant]);
-  return json_({ ok: true, date: today, tasks: out });
+  return json_({ ok: true, date: today, tasks: out, dayClosedBonus: todayClosedBonus_(ss)});
 }
 
 // кошелёк = (баллы закрытых A/B/C) + (баллы отмеченных дней привычек) − (разблокировки × цену)
@@ -398,7 +448,28 @@ function walletBalance_(ss) {
   }
   const log = ss.getSheetByName(SHEET_REWARDS_LOG);
   const unlocks = log ? Math.max(log.getLastRow() - 1, 0) : 0;
+  // бонус за полностью закрытый сегодняшний день
+  earned += todayClosedBonus_(ss);
   return earned - unlocks * REWARD_COST;
+}
+
+// +30, если в сессии «Сегодня» есть задачи и все они «готово»
+function todayClosedBonus_(ss) {
+  const DAY_BONUS = 30;
+  const t = ss.getSheetByName(SHEET_TASKS);
+  const data = t.getDataRange().getValues();
+  let total = 0, done = 0;
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    // колонка «сессия» = индекс 11; статус = индекс 9
+    if (row[11] === 'Сегодня') {
+      total++;
+      if (row[9] === 'готово') done++;
+    }
+  }
+  // ВНИМАНИЕ: задача со статусом «готово» могла потерять флаг «Сегодня» —
+  // проверь в своей таблице, сбрасывается ли «сессия» при завершении.
+  return (total > 0 && done === total) ? DAY_BONUS : 0;
 }
 
 // создаёт лист с шапкой, если его ещё нет
