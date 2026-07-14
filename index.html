@@ -529,20 +529,19 @@
 
     .btn-add:hover { background: var(--bg); color: var(--text); border-color: #9caa8f; }
 
-    /* ── Q dot ───────────────────────────────────── */
+    /* ── Q dot: вертикальная полоска-маркер квадранта во всю высоту строки ─ */
     .q-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
+      width: 4px;
+      align-self: stretch;
+      border-radius: 2px;
       flex-shrink: 0;
-      margin-top: 5px;
     }
 
-    .q-dot.A { background: var(--q-a); }
-    .q-dot.B { background: var(--q-b); }
-    .q-dot.C { background: var(--q-c); }
+    .q-dot.A { background: #FE3F44; }
+    .q-dot.B { background: #FFDE40; }
+    .q-dot.C { background: #FFAD40; }
     .q-dot.D { background: var(--q-d); }
-    .q-dot.V { background: var(--q-v); }
+    .q-dot.V { background: #61B7CF; }
 
     /* ── Nasty tag ───────────────────────────────── */
     .nasty {
@@ -876,13 +875,6 @@
 
     .habits-block:empty { display: none; }
 
-    .habits-title {
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      margin-bottom: 12px;
-    }
-
     /* Карточки привычек: 2 в ряд на широком экране, 1 на узком */
     .habit-cols {
       display: grid;
@@ -919,7 +911,7 @@
       font-weight: 600;
     }
 
-    /* Сетка дней: 7 в ряд, слева направо */
+    /* Сетка дней: колонки = дни недели Пн…Вс, как в календаре (см. renderHabits/offset) */
     .habit-days {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
@@ -927,23 +919,36 @@
     }
 
     .habit-cell {
+      position: relative;
       aspect-ratio: 1;
       min-width: 0;
       border-radius: 7px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      color: var(--muted);
+      border: 2px solid transparent;
+      background-color: transparent;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
       user-select: none;
     }
 
-    .habit-cell.filled {
-      background: var(--q-c);
-      border-color: var(--q-c);
-      color: #fff;
+    .habit-cell.empty { cursor: default; }
+
+    /* Кувшинки: пусто → fr1, отмечено в «лягушачий» день → fr2, отмечено в обычный день → fr3 */
+    .habit-cell.img-empty  { background-image: url('fr1.png'); }
+    .habit-cell.img-frog   { background-image: url('fr2.png'); }
+    .habit-cell.img-flower { background-image: url('fr3.png'); }
+
+    .habit-day-num {
+      position: absolute;
+      top: 1px;
+      right: 3px;
+      font-size: 10px;
+      line-height: 1.4;
+      font-weight: 600;
+      color: var(--text);
+      background: rgba(255,255,255,0.55);
+      border-radius: 4px;
+      padding: 0 3px;
     }
 
     .habit-cell.clickable {
@@ -953,11 +958,10 @@
     .habit-cell.clickable:active { transform: scale(0.92); }
 
     .habit-cell.is-today {
-      border: 2px solid var(--accent);
-      font-weight: 700;
+      border-color: var(--accent);
     }
 
-    .habit-cell.is-today:not(.filled) { color: var(--accent); }
+    .habit-cell.is-today .habit-day-num { color: var(--accent); font-weight: 700; }
 
     /* ── Tabs ────────────────────────────────────── */
     .hidden { display: none !important; }
@@ -1490,6 +1494,17 @@ function daysInMonth(monthStr) {
   return new Date(y, m, 0).getDate();   // m здесь 1-based → день 0 след. месяца
 }
 
+// «Лягушачьи» дни по номеру месяца (1-12, не зависит от года и от привычки) —
+// в эти дни отмеченная ячейка получает картинку с лягушкой (fr2) вместо цветка (fr3).
+const FROG_DAYS = {
+  1:[5,27,4,16,31,1,9,20,25,14], 2:[22,17,23,27,1,25,26,20,10,5],
+  3:[5,2,8,22,19,28,31,18,27,7], 4:[23,6,16,26,17,4,12,5,9,1],
+  5:[22,19,5,16,27,30,21,4,12,23], 6:[9,22,28,18,4,6,24,14,27,20],
+  7:[13,20,24,11,6,26,23,2,17,14], 8:[28,21,18,9,2,27,3,31,6,19],
+  9:[4,28,3,11,27,26,16,8,30,12], 10:[19,1,18,14,16,9,6,20,4,11],
+  11:[9,23,17,28,16,20,6,14,30,8], 12:[5,20,16,1,24,4,8,21,17,28]
+};
+
 function renderHabits() {
   const el = document.getElementById('habits-block');
   const h  = state.habits;
@@ -1499,10 +1514,18 @@ function renderHabits() {
   const today    = h.today;            // 'YYYY-MM-DD'
   const nDays    = daysInMonth(monthStr);
 
-  // Каждая привычка = карточка: заголовок + сетка дней 7 в ряд (1..N слева направо).
+  // Выравнивание по дням недели — та же логика/сдвиг (Monday-based), что и в
+  // renderCompactGrid/renderFullGrid: пустые ячейки-заглушки до дня недели 1-го числа.
+  const [yy, mm] = monthStr.split('-').map(Number);   // mm уже 1-12
+  const firstDow = new Date(yy, mm - 1, 1).getDay();
+  const offset   = firstDow === 0 ? 6 : firstDow - 1;
+  const frogDays = new Set(FROG_DAYS[mm] || []);
+
+  // Каждая привычка = карточка: заголовок + сетка дней-кувшинок, столбцы = дни недели (как в календаре).
   const cols = h.habits.map(hab => {
     const done = new Set(hab.daysThisMonth || []);
     let cells = '';
+    for (let i = 0; i < offset; i++) cells += '<div class="habit-cell empty"></div>';
     for (let d = 1; d <= nDays; d++) {
       const ds        = `${monthStr}-${pad(d)}`;
       const filled    = done.has(ds);
@@ -1510,13 +1533,16 @@ function renderHabits() {
       // Прошлые дни и сегодня кликабельны (сравнение строк 'YYYY-MM-DD' работает
       // как сравнение дат); будущие — только просмотр.
       const clickable = ds <= today;
-      const cls = ['habit-cell',
+      // Картинка: пусто → пустая кувшинка (fr1); отмечено в «лягушачий» день месяца →
+      // кувшинка с лягушкой (fr2); отмечено в обычный день → кувшинка с цветком (fr3).
+      const img = !filled ? 'img-empty' : (frogDays.has(d) ? 'img-frog' : 'img-flower');
+      const cls = ['habit-cell', img,
         filled    ? 'filled'    : '',
         isToday   ? 'is-today'  : '',
         clickable ? 'clickable' : '',
       ].filter(Boolean).join(' ');
       const dataAttr = clickable ? ` data-habit="${esc(hab.name)}" data-day="${ds}"` : '';
-      cells += `<div class="${cls}"${dataAttr}>${d}</div>`;
+      cells += `<div class="${cls}"${dataAttr}><span class="habit-day-num">${d}</span></div>`;
     }
     const pts = hab.points ? `<span class="habit-pts">+${hab.points}</span>` : '';
     return `<div class="habit-col">
@@ -1528,7 +1554,7 @@ function renderHabits() {
     </div>`;
   }).join('');
 
-  el.innerHTML = `<div class="habits-title">📆 Привычки</div><div class="habit-cols">${cols}</div>`;
+  el.innerHTML = `<div class="habit-cols">${cols}</div>`;
 
   // Кликабельны прошлые дни и сегодня; будущие — только просмотр (см. clickable выше).
   el.querySelectorAll('.habit-cell.clickable').forEach(cell => {
